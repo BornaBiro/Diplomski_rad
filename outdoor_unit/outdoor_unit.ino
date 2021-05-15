@@ -1,5 +1,6 @@
 #include "realTimeClock.h"
 Rtc myRtc;
+uint8_t alarm = 0;
 void setup() {
   Serial.begin(115200);
   Serial.println("Code started");
@@ -7,22 +8,23 @@ void setup() {
   myRtc.begin();
   myRtc.setTime(10, 11, 12);
   myRtc.setDate(14, 5, 2021);
+  myRtc.setAlarmEpoch(myRtc.getEpoch() + 10);
+  myRtc.alarmFlag(&alarm);
+  myRtc.setAlarm(true, RTC_ALARMMASK_DATEWEEKDAY);
 }
 
 void loop() {
-  uint8_t h, mi, s, d, mo;
-  uint16_t y;
-  char temp[20];
-  myRtc.getTimeAndDate(&s, &mi, &h, &d, &mo, &y);
-  sprintf(temp, "%02d:%02d:%02d - %d/%02d/%04d", h, mi, s, d, mo, y + 2000);
+  struct tm t;
+  char temp[50];
+  t = myRtc.getRTCData();
+  sprintf(temp, "%02d:%02d:%02d - %d/%02d/%04d", t.tm_hour, t.tm_min, t.tm_sec, t.tm_mday, t.tm_mon + 1, t.tm_year + 1900);
   Serial.println(temp);
-  Serial.println(myRtc.timeAndDateToEpoch(s, mi, h, d, mo, y));
-  uint32_t e = 1644004804;
-  myRtc.epochToTimeAndDate(e, &s, &mi, &h, &d, &mo, &y);
-  sprintf(temp, "%02d:%02d:%02d-%d/%02d/%04d", h, mi, s, d, mo, y);
-  Serial.println(temp);
+  Serial.println(mktime(&t));
   digitalWrite(LED_GREEN, !digitalRead(LED_GREEN));
   delay(1000);
+  if (alarm != 0) {
+    Serial.println("ALARM!!!!!");
+  }
 }
 
 
