@@ -1,15 +1,28 @@
 #include "realTimeClock.h"
-#include "stm32l0xx_hal.h"
+
 Rtc::Rtc()
 {
 
 }
 
-RTC_HandleTypeDef* Rtc::begin()
+void Rtc::begin()
 {
   __HAL_RCC_RTC_ENABLE();
 
-  // Initialize RTC Only
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef sDate = {0};
+  RTC_AlarmTypeDef sAlarm = {0};
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+  /** Initialize RTC Only
+  */
   hrtc.Instance = RTC;
   hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
   hrtc.Init.AsynchPrediv = 127;
@@ -22,7 +35,13 @@ RTC_HandleTypeDef* Rtc::begin()
   {
     Error_Handler();
   }
-  // Initialize RTC and set the Time and Date
+
+  /* USER CODE BEGIN Check_RTC_BKUP */
+
+  /* USER CODE END Check_RTC_BKUP */
+
+  /** Initialize RTC and set the Time and Date
+  */
   sTime.Hours = 0x0;
   sTime.Minutes = 0x0;
   sTime.Seconds = 0x0;
@@ -41,7 +60,27 @@ RTC_HandleTypeDef* Rtc::begin()
   {
     Error_Handler();
   }
-  return &hrtc;
+  /** Enable the Alarm A
+  */
+  sAlarm.AlarmTime.Hours = 0x0;
+  sAlarm.AlarmTime.Minutes = 0x0;
+  sAlarm.AlarmTime.Seconds = 0x0;
+  sAlarm.AlarmTime.SubSeconds = 0x0;
+  sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  sAlarm.AlarmMask = RTC_ALARMMASK_NONE;
+  sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
+  sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
+  sAlarm.AlarmDateWeekDay = 0x1;
+  sAlarm.Alarm = RTC_ALARM_A;
+  if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN RTC_Init 2 */
+
+  /* USER CODE END RTC_Init 2 */
+
 }
 
 void Rtc::setTime(uint8_t _h, uint8_t _m, uint8_t _s)
@@ -110,7 +149,7 @@ void Rtc::setAlarm(bool _state, uint32_t _mask)
     sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
     sAlarm.Alarm = RTC_ALARM_A;
     HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN);
-    HAL_NVIC_SetPriority(RTC_IRQn, 0, 0);
+    HAL_NVIC_SetPriority(RTC_IRQn, 2, 0);
     HAL_NVIC_EnableIRQ(RTC_IRQn);
   }
   else
@@ -175,8 +214,13 @@ void Rtc::epochToTimeAndDate(uint32_t _ep, uint8_t *_sec, uint8_t *_min, uint8_t
   *_year = (_t->tm_year) + 1900;
 }
 
+extern "C" void RTC_IRQHandler(void)
+{
+  HAL_RTC_AlarmIRQHandler(&hrtc);
+}
+
 extern "C" void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 {
   UNUSED(hrtc);
-  *_alarmFlag = 0xFF;
+  *_alarmFlag = 0xff;
 }
