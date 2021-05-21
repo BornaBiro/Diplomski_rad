@@ -1,0 +1,6 @@
+SHT21.c:10:9:SHT21_CheckSensor	16	static
+SHT21.c:5:9:SHT21_Begin	8	static
+SHT21.c:38:10:SHT21_ReadRegister	40	static
+SHT21.c:15:9:SHT21_ReadHumidity	8	static
+SHT21.c:26:9:SHT21_ReadTemperature	8	static
+SHT21.c:55:6:SHT21_SoftReset	0	static

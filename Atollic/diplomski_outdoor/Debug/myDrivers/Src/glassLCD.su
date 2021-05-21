@@ -1,0 +1,6 @@
+glassLCD.c:11:6:glassLCD_WriteData	40	static
+glassLCD.c:29:6:glassLCD_Clear	32	static
+glassLCD.c:41:6:glassLCD_SetDot	24	static
+glassLCD.c:50:6:glassLCD_WriteCmd	24	static
+glassLCD.c:6:6:glassLCD_Begin	8	static
+glassLCD.c:36:6:glassLCD_State	8	static

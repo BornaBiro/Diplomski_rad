@@ -1,0 +1,41 @@
+// LCD used P/N: DE 133-RS-30/6,35/12° (3 VOLT)
+// byte array[F E AN A G D B C dp]
+// byte array[BP0 BP1 BP2 BP0 BP1 BP2 BP0 BP1 BP2]
+#define BLANK 0b000000000
+#define SEGA  0b000100000
+#define SEGB  0b000000100
+#define SEGC  0b000000010
+#define SEGD  0b000001000
+#define SEGE  0b010000000
+#define SEGF  0b100000000
+#define SEGG  0b000010000
+#define SEGP  0b000000001 // Symbol .
+#define SEGW  0b001000000 // Symbol "arrow down"
+
+#define SPACE   (BLANK)
+#define QUMARK  (SEGB|SEGF)
+#define PERC    (SEGB|SEGE|SEGG)
+#define APH     (SEGG)
+#define OBRAC   (SEGA|SEGD|SEGE|SEGF)
+#define CBRAC   (SEGA|SEGB|SEGC|SEGD)
+#define MINUS   (SEGG)
+#define DOT     (SEGP)
+#define NUM0    (SEGA|SEGB|SEGC|SEGD|SEGE|SEGF)
+#define NUM1    (SEGB|SEGC)
+#define NUM2    (SEGA|SEGB|SEGD|SEGE|SEGG)
+#define NUM3    (SEGA|SEGB|SEGC|SEGD|SEGG)
+#define NUM4    (SEGB|SEGC|SEGF|SEGG)
+#define NUM5    (SEGA|SEGC|SEGD|SEGF|SEGG)
+#define NUM6    (SEGA|SEGC|SEGD|SEGE|SEGF|SEGG)
+#define NUM7    (SEGA|SEGB|SEGC)
+#define NUM8    (SEGA|SEGB|SEGC|SEGD|SEGE|SEGF|SEGG)
+#define NUM9    (SEGA|SEGB|SEGC|SEGD|SEGF|SEGG)
+
+#define LETA    (SEGA|SEGB|SEGC|SEGE|SEGF|SEGG)
+#define LETB    (SEGC|SEGD|SEGE|SEGF|SEGG)
+#define LETC    (SEGA|SEGD|SEGE|SEGF)
+#define LETD    (SEGB|SEGC|SEGD|SEGE|SEGG)
+#define LETE    (SEGA|SEGD|SEGE|SEGF|SEGG)
+#define LETF    (SEGA|SEGE|SEGF|SEGG)
+#define LETG    (SEGA|SEGC|SEGD|SEGE|SEGF|SEGG)
+#define LETH    (SEGB|SEGC|SEGE|SEGF|SEGG)
