@@ -2,49 +2,93 @@
 #include "string.h"
 
 extern I2C_HandleTypeDef hi2c1;
+static uint8_t _lcdTemp[9] = {0};
+static uint8_t _dots = 0;
 
 void glassLCD_Begin()
 {
 	glassLCD_WriteCmd(LCD_CONFIG);
+	glassLCD_Clear();
+	glassLCD_Update();
 }
 
 void glassLCD_WriteData(char* s)
 {
-	uint8_t _segments[9] = {0};
-	uint8_t _n = strlen(s);
+	// Get the size of string
+	uint8_t _n = strlen(s) + 1;
 
-	//Convert ASCII to segment data
+	//Convert ASCII to segment data and save it to buffer
 	for (int i = 0; i < _n; i++)
 	{
-	  _segments[i + 1] = asciiToSeg[s[i] - ' '] >> 1;
+		_lcdTemp[i] = asciiToSeg[s[i] - ' '];
 	}
+}
 
-	// Add command for RAM addresing
-	_segments[0] = 0;
+void glassLCD_Update()
+{
+	uint8_t _dotMask = 0;
 
-	// Push all data to I2C!
-	HAL_I2C_Master_Transmit(&hi2c1, PCF85176_ADDR, _segments, 9, 1000);
+	// Buffer for I2C data
+	uint8_t _data[9] = {0};
+
+	//Write segments
+	_data[0] = 0;
+	for (int i = 0; i < 8; i++)
+	{
+		_data[i + 1] = _lcdTemp[i];
+	}
+	HAL_I2C_Master_Transmit(&hi2c1, PCF85176_ADDR, _data, 9, 1000);
+
+	//Now write dots
+	for (int i = 0; i < 8; i++)
+	{
+		_dotMask = (_dots & (1 << (7 - i))) ? 0b00100000 : 0b00000000;
+	    _data[0] = 2 + (3 * i);
+	    _data[1] = ((_lcdTemp[i] & 3) << 6) | _dotMask | (_lcdTemp[i + 1] >> 3);
+	    HAL_I2C_Master_Transmit(&hi2c1, PCF85176_ADDR, _data, 2, 1000);
+	}
 }
 
 void glassLCD_Clear()
 {
-	uint8_t _segments[9] = {0};
-	_segments[0] = 0;
-	HAL_I2C_Master_Transmit(&hi2c1, PCF85176_ADDR, _segments, 9, 1000);
+	memset(_lcdTemp, 0, 8);
+	_dots = 0;
 }
 
-void glassLCD_State(uint8_t _state)
+//void glassLCD_State(uint8_t _state)
+//{
+//	glassLCD_WriteCmd((LCD_CONFIG) & ((_state & 1) << 3));
+//}
+
+//void glassLCD_SetDot(uint8_t _n, uint8_t _dot)
+//{
+//	_n &= 7;
+//	if (_dot)
+//	{
+//		_dots |= 1 << _n;
+//	}
+//	else
+//	{
+//		_dots &= ~(1 << _n);
+//	}
+//}
+
+void glassLCD_SetDot(uint8_t _dot)
 {
-	glassLCD_WriteCmd((LCD_CONFIG) & ((_state & 1) << 3));
+	_dots = _dot;
 }
 
-void glassLCD_SetDot(uint8_t _n, uint8_t _dot)
+void glassLCD_WriteArrow(uint8_t _n, uint8_t _en)
 {
-	uint8_t _data[2];
-
-	_data[0] = 2 + (3 * _n);
-	_data[1] = _dot ? (0b00100000) : (0b00000000);
-	HAL_I2C_Master_Transmit(&hi2c1, PCF85176_ADDR, _data, 2, 1000);
+  _n &= 7;
+  if (_en)
+  {
+	  _lcdTemp[_n] |= SEGW;
+  }
+  else
+  {
+	  _lcdTemp[_n] &= ~(SEGW);
+  }
 }
 
 void glassLCD_WriteCmd(uint8_t _comm)

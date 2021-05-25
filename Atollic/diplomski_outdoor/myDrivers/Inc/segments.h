@@ -1,16 +1,15 @@
 // LCD used P/N: DE 133-RS-30/6,35/12° (3 VOLT)
 // byte array[F E AN A G D B C dp]
 // byte array[BP0 BP1 BP2 BP0 BP1 BP2 BP0 BP1 BP2]
-#define BLANK 0b000000000
-#define SEGA  0b000100000
-#define SEGB  0b000000100
-#define SEGC  0b000000010
-#define SEGD  0b000001000
-#define SEGE  0b010000000
-#define SEGF  0b100000000
-#define SEGG  0b000010000
-#define SEGP  0b000000001 // Symbol .
-#define SEGW  0b001000000 // Symbol "arrow down"
+#define BLANK 0b00000000
+#define SEGA  0b00010000
+#define SEGB  0b00000010
+#define SEGC  0b00000001
+#define SEGD  0b00000100
+#define SEGE  0b01000000
+#define SEGF  0b10000000
+#define SEGG  0b00001000
+#define SEGW  0b00100000 // Symbol "arrow down"
 
 #define SPACE   (BLANK)
 #define QUMARK  (SEGB|SEGF)

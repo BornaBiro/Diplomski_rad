@@ -24,9 +24,12 @@ static const uint16_t asciiToSeg[] = {SPACE, BLANK, QUMARK, BLANK, BLANK, PERC, 
 
 void glassLCD_Begin();
 void glassLCD_WriteData(char* s);
+void glassLCD_Update();
 void glassLCD_Clear();
-void glassLCD_State(uint8_t _state);
-void glassLCD_SetDot(uint8_t _n, uint8_t _dot);
+//void glassLCD_State(uint8_t _state);
+//void glassLCD_SetDot(uint8_t _n, uint8_t _dot);
+void glassLCD_SetDot(uint8_t _dot);
+void glassLCD_WriteArrow(uint8_t _n, uint8_t _en);
 void glassLCD_WriteCmd(uint8_t _comm);
 
 #endif

@@ -23,11 +23,13 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include "glassLCD.h"
 #include "SHT21.h"
 #include "rtc.h"
+#include "sleep.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -57,7 +59,7 @@ SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-const char codeStartedStr[] = {"Code has started!\r\n"};
+const char lcdTest[] = {"88888888"};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -115,24 +117,15 @@ int main(void)
   SHT21_Begin();
 
   // Init LCD Driver
-  glassLCD_Begin(&hi2c1);
+  glassLCD_Begin();
 
   // Set time on RTC and alarm for wake up (FOR TEST ONLY!)
   RTC_SetTime(TIME_HOURS(), TIME_MINUTES(), TIME_SECONDS());
-  RTC_SetAlarmEpoch(RTC_GetEpoch() + 10, RTC_ALARMMASK_DATEWEEKDAY);
-  HAL_UART_Transmit(&huart2, codeStartedStr, sizeof(codeStartedStr), 1000);
-
-  HAL_PWR_DisablePVD();
-  HAL_PWREx_EnableUltraLowPower();
-  HAL_SuspendTick();
-
-  // Enter "light sleep" mode
-  HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
-
-  // Recover from "light sleep" mode
-  SystemClock_Config();
-  HAL_ResumeTick();
-
+  glassLCD_WriteData(lcdTest);
+  glassLCD_SetDot(0b11111111);
+  glassLCD_WriteArrow(0, 1);
+  glassLCD_Update();
+  HAL_Delay(2000);
   /* USER CODE END 2 */
  
  
@@ -142,17 +135,15 @@ int main(void)
   while (1)
   {
 	  char text[40];
-	  //int16_t _hum = SHT21_ReadHumidity();
-	  //int16_t _t = SHT21_ReadTemperature();
-	  //sprintf(text, "%2d%01dC %2d%01d", _t / 100, abs(_t / 10 % 10), _hum / 100, abs(_hum / 10 % 10));
-	  //glassLCD_SetDot(1, 1);
-	  //glassLCD_SetDot(6, 1);
-
-	  sprintf(text, "%04lu", RTC_GetEpoch() % 1000);
+	  int16_t _hum = SHT21_ReadHumidity();
+	  int16_t _t = SHT21_ReadTemperature();
+	  sprintf(text, "%2d%01dC %2d%01d", _t / 100, abs(_t / 10 % 10), _hum / 100, abs(_hum / 10 % 10));
+	  glassLCD_Clear();
 	  glassLCD_WriteData(text);
-	  sprintf(text, "%lu\r\n", RTC_GetEpoch());
-	  HAL_UART_Transmit(&huart2, text, strlen(text), 1000);
-	  HAL_Delay(1000);
+	  glassLCD_SetDot(0b01000010);
+	  glassLCD_Update();
+	  RTC_SetAlarmEpoch(RTC_GetEpoch() + 60, RTC_ALARMMASK_DATEWEEKDAY);
+	  Sleep_LightSleep();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -228,7 +219,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x00303D5B;
+  hi2c1.Init.Timing = 0x0010061A;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
