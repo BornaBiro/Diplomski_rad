@@ -11,25 +11,9 @@ Adafruit_MCP23017 mcp;
 #define AX 34
 #define AY 35
 
-static const char key[4][12] = {
-  {'!', '"', '#', '$', '%', '&', '/', '(', ')', '=', '?', '*'},
-  {'Q', 'W', 'E', 'R', 'T', 'Z', 'U', 'I', 'O', 'P', 'Š', 'Ð'},
-  {'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'C', 'C', 'Ž'},
-  {'>', 'Y', 'X', 'C', 'V', 'B', 'N', 'M', ';', ':', '_', 8},
-};
-
-static const char key2[4][12] = {
-  {'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', char(39), '+'},
-  {'q', 'w', 'e', 'r', 't', 'z', 'u', 'i', 'o', 'p', 'š', 'd'},
-  {'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'c', 'c', 'ž'},
-  {'<', 'y', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '-', 8},
-};
-
-int t[2];
 int ts[2];
-int x = -1, y = -1;
-int shiftKey = 0;
 
+int shiftKey = 0;
 struct textBoxHandle
 {
   static const uint8_t maxSize = 50;
@@ -40,78 +24,30 @@ struct textBoxHandle
   uint8_t fontScale = 1;
   int16_t x = 0;
   int16_t y = 0;
-} text;
+}text;
 
 void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(115200);
   display.begin();
-  drawKeyboard();
-  text.x = 10;
-  text.y = 100;
-  text.size = 15;
-  text.fontScale = 5;
+  keyboard(-1, -1);
+  text.x = 0;
+  text.y = 372;
+  text.size = 30;
+  text.fontScale = 3;
   textBox(&text, 0, -1, -1);
   display.display();
-}
-char str[250];
-void loop() {
-  // put your main code here, to run repeatedly:
   initTouch();
+}
+
+void loop() {
   touchSleep();
   if (touchAvailable()) {
     readTouch(ts);
-    char tmp[30];
-    char c = -1;
     display.setTextColor(BLACK, WHITE);
-    display.setTextSize(2);
-    display.setCursor(0, 0);
-    sprintf(tmp, "%4d, %4d", ts[0], ts[1]);
-    display.println(tmp);
-    ts[0] = map(ts[0], 2815, 594, 0, 799);
-    ts[1] = map(ts[1], 2591, 372, 0, 599);
-    if (ts[1] > 380 && ts[1] < 554) {
-      x = (ts[0]) / 66.67;
-      y = (ts[1] - 400) / 37.5;
-      c = shiftKey ? key[y][x] : key2[y][x];
-    }
-    sprintf(tmp, "%3d, %3d\n%3d, %3d", ts[0], ts[1], x, y);
-    display.print(tmp);
-    if (ts[0] > 345 && ts[0] < 455 && ts[1] > 560 && ts[1] < 600) {
-      c = ' ';
-    }
-
-    if (ts[0] > 540 && ts[0] < 650 && ts[1] > 560 && ts[1] < 600) {
-      shiftKey = (shiftKey + 1) & 1;
-      drawKeyboard();
-    }
-    //textBox(10, 100, 20, str, c, 3, ts[0], ts[1]);
-    textBox(&text, c, ts[0], ts[1]);
-    //unsigned long t1, t2;
-    //t1 = millis();
+    ts[0] = map(ts[0], 2846, 628, 0, 799);
+    ts[1] = map(ts[1], 2677, 391, 0, 599);
+    textBox(&text, keyboard(ts[0], ts[1]), ts[0], ts[1]);
     display.partialUpdate(true, true);
-    //t2 = millis();
-    //Serial.println(t2 - t1);
   }
-}
-
-void drawX(int x, int y) {
-  display.drawFastHLine(x - 4, y, 9, BLACK);
-  display.drawFastVLine(x, y - 4, 9, BLACK);
-}
-
-void drawKeyboard() {
-  display.setTextSize(3);
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 12; j++) {
-      display.setCursor(33 + j * 66, 400 + 40 * i);
-      display.print(shiftKey ? key[i][j] : key2[i][j]);
-    }
-  }
-  display.setCursor(355, 560);
-  display.print("SPACE");
-  display.setCursor(550, 560);
-  display.print("SHIFT");
 }
 
 void initTouch() {
@@ -228,7 +164,7 @@ void textBox(struct textBoxHandle *s, char _c, int _tsx, int _tsy)
   {
     int j = (_tsx - s->x) / 6 / s->fontScale;
     s->selected = j + _startPos;
-    if(s->selected > s->n) s->selected = s->n;
+    if (s->selected > s->n) s->selected = s->n;
   }
 
   //Draw cursor on screen
@@ -236,7 +172,89 @@ void textBox(struct textBoxHandle *s, char _c, int _tsx, int _tsy)
   //You can do this way, because, you will or alter the string by adding new letters or change cursor position, but not both in the same time!
 }
 
-char keyboard(uint16_t _x, uint16_t _y)
+char keyboard(int _x, int _y)
 {
-  
+  // Keymap for SHIFT key pressed
+  static const char key[4][12] = {
+    {'!', '"', '#', '$', '%', '&', '/', '(', ')', '=', '?', '*'},
+    {'Q', 'W', 'E', 'R', 'T', 'Z', 'U', 'I', 'O', 'P', '[', ']'},
+    {'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ' ', ' ', ' '},
+    {'>', 'Y', 'X', 'C', 'V', 'B', 'N', 'M', ';', ':', '_', ' '},
+  };
+
+  // Keymap for non pressed SHIFT key
+  static const char key2[4][12] = {
+    {'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', char(39), '+'},
+    {'q', 'w', 'e', 'r', 't', 'z', 'u', 'i', 'o', 'p', '{', '}'},
+    {'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', '@', ' ', ' '},
+    {'<', 'y', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '-', ' '},
+  };
+
+  // Symbols for non-standard keys (like backspace, shift, enter and cancel)
+  const uint8_t shiftKeySymbol[] PROGMEM = {
+    0x00, 0xc0, 0x00, 0x01, 0xe0, 0x00, 0x01, 0xf0, 0x00, 0x03, 0xf0, 0x00, 0x07, 0xf8, 0x00, 0x0f, 0x3c, 0x00, 0x0e, 0x1c, 0x00, 0x1e, 0x1e, 0x00, 0x3c, 0x0f, 0x00, 0x38, 0x07, 0x80, 0x78, 0x07, 0x80, 0xfe, 0x1f, 0xc0, 0xfe, 0x1f, 0xc0, 0x0e, 0x1c, 0x00, 0x0e, 0x1c, 0x00, 0x0e, 0x1c, 0x00, 0x0e, 0x1c, 0x00, 0x0e, 0x1c, 0x00, 0x0e, 0x1c, 0x00, 0x0e, 0x1c, 0x00, 0x0e, 0x1c, 0x00, 0x0f, 0xfc, 0x00, 0x0f, 0xfc, 0x00, 0x0f, 0xfc, 0x00
+  };
+  const uint8_t backKeySymbol[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0xf8, 0x00, 0x0f, 0xfc, 0x00, 0x1c, 0x0e, 0x00, 0x3e, 0x0f, 0x00, 0x77, 0x1f, 0x80, 0x63, 0xb9, 0x80, 0x61, 0xf1, 0x80, 0x60, 0xe1, 0x80, 0x61, 0xf1, 0x80, 0x63, 0xb9, 0x80, 0x67, 0x1d, 0x80, 0x7e, 0x0f, 0x80, 0x3c, 0x07, 0x00, 0x1c, 0x0e, 0x00, 0x0f, 0xfc, 0x00, 0x07, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+  const uint8_t enterKeySymbol[] = {
+    0x00, 0x00, 0x80, 0x00, 0x01, 0x80, 0x00, 0x03, 0x80, 0x00, 0x03, 0x80, 0x00, 0x03, 0x80, 0x00, 0x07, 0x80, 0x00, 0x07, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x0e, 0x00, 0x00, 0x0e, 0x00, 0x00, 0x1e, 0x00, 0x00, 0x1c, 0x00, 0x20, 0x3c, 0x00, 0x70, 0x38, 0x00, 0x78, 0x38, 0x00, 0x38, 0x70, 0x00, 0x3c, 0x70, 0x00, 0x1c, 0xf0, 0x00, 0x1e, 0xe0, 0x00, 0x0e, 0xe0, 0x00, 0x0f, 0xc0, 0x00, 0x07, 0xc0, 0x00, 0x07, 0xc0, 0x00, 0x03, 0x80, 0x00
+  };
+  const uint8_t backspaceKeySymbol[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x80, 0x00, 0x07, 0x80, 0x00, 0x0f, 0x80, 0x00, 0x1f, 0x80, 0x00, 0x3f, 0x80, 0x00, 0x7f, 0xff, 0xc0, 0xff, 0xff, 0xc0, 0x7f, 0xff, 0xc0, 0x3f, 0x80, 0x00, 0x1f, 0x80, 0x00, 0x0f, 0x80, 0x00, 0x07, 0x80, 0x00, 0x03, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+
+  // Size in px for symbols
+  const int keySymbol_w = 18;
+  const int keySymbol_h = 24;
+
+  // Key that has been pressed (if it's invalid, send -1 instead of char)
+  char _c = -1;
+
+  // Check touch boundaries (keyboard is alwasy at the bottom, X = 0...800, Y = 400...600)
+  if (_y > 400 && _y < 600 && _x > 0 && _x < 800)
+  {
+    if (_y >= 570) // Non-standard key is pressed?
+    {
+      if (_x < 66) _c = -1;  // Cancel Key
+      if (_x > 66 && _x < 132) shiftKey ^= 1;   // Shift Key
+      if (_x > 132 && _x < 660) _c = ' ';    // Spacebar
+      if (_x > 660 && _x < 726) _c = 8;      // Backspace
+      if (_x > 726 && _x < 792) _c = -1;     // Confirm key
+    }
+    else  //Standard key is pressed?
+    {
+      _c = shiftKey?key[(_y - 400) / 40][_x / 66]:key2[(_y - 400) / 40][_x / 66];
+      if (_c == ' ') _c = -1; // If it's empty space on keyboard, return invalid press
+    }
+  }
+
+  // Draw keyboard
+  display.setTextSize(3);
+  for (int i = 0; i < 4; i++) {
+    for (int j = 0; j < 12; j++) {
+      display.setCursor(33 + (j * 66) - 9, 400 + (40 * i) + 10);
+      display.print(shiftKey ? key[i][j] : key2[i][j]);
+    }
+  }
+  display.setCursor(355, 570);
+  display.print("SPACE");
+  display.drawBitmap(90, 570, shiftKeySymbol, keySymbol_w, keySymbol_h, BLACK);
+  display.drawBitmap(24, 570, backKeySymbol, keySymbol_w, keySymbol_h, BLACK);
+  display.drawBitmap(750, 570, enterKeySymbol, keySymbol_w, keySymbol_h, BLACK);
+  display.drawBitmap(684, 570, backspaceKeySymbol, keySymbol_w, keySymbol_h, BLACK);
+
+  // Draw lines of each key
+  for (int i = 0; i < 5; i++)
+  {
+    display.drawFastHLine(0, 400 + 40 * i, 800, BLACK);
+  }
+  for (int i = 1; i < 12; i++)
+  {
+    int _l = (i > 2) && (i < 10) ? 160 : 200;
+    display.drawFastVLine(i * 66, 400, _l, BLACK);
+  }
+
+  // Return what has been pressed
+  return _c;
 }
