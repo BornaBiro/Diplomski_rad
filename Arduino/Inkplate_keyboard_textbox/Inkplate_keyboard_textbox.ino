@@ -24,30 +24,67 @@ struct textBoxHandle
   uint8_t fontScale = 1;
   int16_t x = 0;
   int16_t y = 0;
-}text;
+} text;
+
+struct listBoxHandle
+{
+  static const uint8_t maxSize = 20;
+  char *list[maxSize];
+  int16_t x = 0;
+  int16_t y = 0;
+  uint8_t maxElements = 0;
+  uint8_t showElements = 5;
+  uint8_t nMax = 10;
+  uint8_t fontScale = 1;
+} list;
 
 void setup() {
   display.begin();
-  keyboard(-1, -1);
-  text.x = 0;
-  text.y = 372;
-  text.size = 30;
-  text.fontScale = 3;
-  textBox(&text, 0, -1, -1);
+  //keyboard(-1, -1);
+  //text.x = 0;
+  //text.y = 372;
+  //text.size = 30;
+  //text.fontScale = 3;
+  //textBox(&text, 0, -1, -1);
+  //display.display();
+  //initTouch();
+
+  list.fontScale = 3;
+  list.x = 100;
+  list.y = 100;
+  list.maxElements = 7;
+  list.showElements = 5;
+  list.list[0] = "WiFi1";
+  list.list[1] = "MyWiFi123456";
+  list.list[2] = "do_not_connect_to_it";
+  list.list[3] = "tryme_xD";
+  list.list[4] = "hell_yeah112233";
+  list.list[5] = "mujo_i_haso";
+  list.list[6] = "WiFi987654321";
+  listBox(&list);
+  //display.setTextSize(4);
+  //display.write((char)list.list[0][0]);
   display.display();
-  initTouch();
 }
 
 void loop() {
-  touchSleep();
-  if (touchAvailable()) {
-    readTouch(ts);
-    display.setTextColor(BLACK, WHITE);
-    ts[0] = map(ts[0], 2846, 628, 0, 799);
-    ts[1] = map(ts[1], 2677, 391, 0, 599);
-    textBox(&text, keyboard(ts[0], ts[1]), ts[0], ts[1]);
-    display.partialUpdate(true, true);
-  }
+  // Keyboard & textbox stuff
+  //touchSleep();
+  //if (touchAvailable()) {
+  //  readTouch(ts);
+  //  display.setTextColor(BLACK, WHITE);
+  //  ts[0] = map(ts[0], 2846, 628, 0, 799);
+  //  ts[1] = map(ts[1], 2677, 391, 0, 599);
+  //  char c = keyboard(ts[0], ts[1]);
+  //  if (c == 24)
+  //  {
+  //    display.clearDisplay();
+  //    display.println("Input canceled");
+  //    display.display();
+  //  }
+  //  textBox(&text, c, ts[0], ts[1]);
+  //  display.partialUpdate(true, true);
+  //}
 }
 
 void initTouch() {
@@ -178,7 +215,7 @@ char keyboard(int _x, int _y)
   static const char key[4][12] = {
     {'!', '"', '#', '$', '%', '&', '/', '(', ')', '=', '?', '*'},
     {'Q', 'W', 'E', 'R', 'T', 'Z', 'U', 'I', 'O', 'P', '[', ']'},
-    {'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ' ', ' ', ' '},
+    {'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', '\\', '|', ' '},
     {'>', 'Y', 'X', 'C', 'V', 'B', 'N', 'M', ';', ':', '_', ' '},
   };
 
@@ -216,15 +253,15 @@ char keyboard(int _x, int _y)
   {
     if (_y >= 570) // Non-standard key is pressed?
     {
-      if (_x < 66) _c = -1;  // Cancel Key
+      if (_x < 66) _c = 24;  // Cancel Key
       if (_x > 66 && _x < 132) shiftKey ^= 1;   // Shift Key
       if (_x > 132 && _x < 660) _c = ' ';    // Spacebar
       if (_x > 660 && _x < 726) _c = 8;      // Backspace
-      if (_x > 726 && _x < 792) _c = -1;     // Confirm key
+      if (_x > 726 && _x < 792) _c = 6;     // Confirm key
     }
     else  //Standard key is pressed?
     {
-      _c = shiftKey?key[(_y - 400) / 40][_x / 66]:key2[(_y - 400) / 40][_x / 66];
+      _c = shiftKey ? key[(_y - 400) / 40][_x / 66] : key2[(_y - 400) / 40][_x / 66];
       if (_c == ' ') _c = -1; // If it's empty space on keyboard, return invalid press
     }
   }
@@ -257,4 +294,24 @@ char keyboard(int _x, int _y)
 
   // Return what has been pressed
   return _c;
+}
+
+int listBox(struct listBoxHandle *s)
+{
+  display.setTextSize(s->fontScale);
+  display.drawRect(s->x, s->y, (s->fontScale) * 6 * (s->nMax) + 6, ((s->fontScale) * 8 * (s->showElements)) + ((s->showElements) * 6), BLACK);
+  for (int i = 0; i < (s->showElements); i++)
+  {
+    display.drawFastHLine(s->x, (s->y) + ((s->fontScale) * 8 * i) + (i * 6), (s->fontScale) * 6 * (s->nMax) + 6, BLACK);
+    if (s->list[i] != NULL)
+    {
+      display.setCursor(s->x + 4, (s->y) + ((s->fontScale) * 8 * i) + (i * 6) + 4);
+      for (int j = 0; (j < s->nMax) && (s->list[i][j] != NULL); j++)
+      {
+        display.write(s->list[i][j]);
+      }
+    }
+  }
+
+  return 0;
 }
