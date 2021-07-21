@@ -36,10 +36,12 @@ struct listBoxHandle
   uint8_t showElements = 5;
   uint8_t nMax = 10;
   uint8_t fontScale = 1;
+  uint8_t startElement = 0;
 } list;
 
 void setup() {
   display.begin();
+  Serial.begin(115200);
   //keyboard(-1, -1);
   //text.x = 0;
   //text.y = 372;
@@ -47,13 +49,15 @@ void setup() {
   //text.fontScale = 3;
   //textBox(&text, 0, -1, -1);
   //display.display();
-  //initTouch();
+  initTouch();
 
   list.fontScale = 3;
   list.x = 100;
   list.y = 100;
   list.maxElements = 7;
-  list.showElements = 5;
+  list.showElements = 4;
+  list.nMax = 20;
+  list.startElement = 0;
   list.list[0] = "WiFi1";
   list.list[1] = "MyWiFi123456";
   list.list[2] = "do_not_connect_to_it";
@@ -61,7 +65,7 @@ void setup() {
   list.list[4] = "hell_yeah112233";
   list.list[5] = "mujo_i_haso";
   list.list[6] = "WiFi987654321";
-  listBox(&list);
+  listBox(&list, -1, -1);
   //display.setTextSize(4);
   //display.write((char)list.list[0][0]);
   display.display();
@@ -85,6 +89,26 @@ void loop() {
   //  textBox(&text, c, ts[0], ts[1]);
   //  display.partialUpdate(true, true);
   //}
+
+  if (readTouch(ts))
+  {
+    ts[0] = map(ts[0], 2846, 628, 0, 799);
+    ts[1] = map(ts[1], 2677, 391, 0, 599);
+    int c = listBox(&list, ts[0], ts[1]);
+    if (c == -2)
+    {
+      display.partialUpdate(false, true);
+    }
+    if (c >= 0)
+    {
+      char tmp[40];
+      display.fillRect(0, 500, 288, 24, WHITE);
+      sprintf(tmp, "Selected %1d. item", c + 1);
+      display.setCursor(0, 500);
+      display.print(tmp);
+      display.partialUpdate(false, true);
+    }
+  }
 }
 
 void initTouch() {
@@ -296,22 +320,90 @@ char keyboard(int _x, int _y)
   return _c;
 }
 
-int listBox(struct listBoxHandle *s)
+int listBox(struct listBoxHandle *s, int _x, int _y)
 {
-  display.setTextSize(s->fontScale);
-  display.drawRect(s->x, s->y, (s->fontScale) * 6 * (s->nMax) + 6, ((s->fontScale) * 8 * (s->showElements)) + ((s->showElements) * 6), BLACK);
-  for (int i = 0; i < (s->showElements); i++)
+  // Return variable (selected element in the list, -1 if select is invalid or it's not selected at all)
+  int _selected = -1;
+
+  // Calculate dimensions of list box itself
+  int16_t _boxW = (s->fontScale) * 6 * (s->nMax) + 6;
+  int16_t _boxH = ((s->fontScale) * 8 * (s->showElements)) + ((s->showElements) * 6);
+
+  display.fillRect(s->x, s->y, _boxW + 30, _boxH, WHITE);
+
+  // Check touch boundaries for list
+  if ((_x > s->x) && (_x < (s->x + _boxW)) && (_y > s->y) && (_y < (s->y + _boxH)))
   {
-    display.drawFastHLine(s->x, (s->y) + ((s->fontScale) * 8 * i) + (i * 6), (s->fontScale) * 6 * (s->nMax) + 6, BLACK);
-    if (s->list[i] != NULL)
+    _selected = ((_y - s->y) / (_boxH / s->showElements)) + s->startElement;
+    if (_selected > s->maxElements - 1) _selected = -1;
+  }
+
+  // Check touch boundaries for scroll
+  if ((_x > (s->x + _boxW)) && (_x < (s->x + _boxW + 30)))
+  {
+    if (_y > (s->y) && _y < (s->y + 30) && s->startElement > 0) 
     {
+      s->startElement--;
+      _selected = -2;
+    }
+    if (_y > (s->y + _boxH - 30) && _y < (s->y + _boxH))
+    {
+      s->startElement++;
+      _selected = -2;
+    }
+  }
+
+  // Check if you call actually use scroll
+  if (s->showElements > s->maxElements)
+  {
+    s->startElement = 0;
+  } else if ((s->startElement + s->showElements) > s->maxElements)
+  {
+    // Check if start element is not bigger then the list
+    s->startElement =  s->maxElements - s->showElements;
+  }
+
+  // Draw a box slider
+  display.drawRect((s->x) + _boxW - 1, (s->y), 30, _boxH, BLACK);
+
+  // Draw two arrows (one facing up and otherone down) at the middle of the slider box. Watchout! in order to arrow to be centered, you have substract two pixels (one for width and one for offset of one pixel while drawing rect)
+  display.fillTriangle((s->x) + _boxW + 13, (s->y) + 5, (s->x) + _boxW + 3, (s->y) + 20, (s->x) + _boxW + 23, (s->y) + 20, BLACK);
+  display.fillTriangle((s->x) + _boxW + 13, (s->y) + _boxH - 5, (s->x) + _boxW + 3, (s->y) + _boxH - 20, (s->x) + _boxW + 23, (s->y) + _boxH - 20, BLACK);
+
+  // Calculate the size of the scroll wheel (accroding to the number of showed elemets vs all elemets)
+  float _scrollScale = float(s->showElements) / (s->maxElements);
+
+  // Do not allow bigger than max size if list box is bigger than nubmer of all elements
+  if (_scrollScale > 1) _scrollScale = 1;
+
+  // Calculate the height of rect of scroll wheel
+  int16_t _scrollSize = (_boxH - 50.0) * _scrollScale;
+
+  // Now draw scroll wheel itself
+  int _scrollOffset = ((_boxH - 50) - _scrollSize) * (float(s->startElement) / (s->maxElements - s->showElements));
+  display.fillRect((s->x) + _boxW + 4, (s->y) + 25 + _scrollOffset, 20, _scrollSize, BLACK);
+
+  // Set size of fonts (it's linear scaling, that means scaling is the same in x and y direction)
+  display.setTextSize(s->fontScale);
+
+  // Draw just a box that contains list (list box itself)
+  display.drawRect(s->x, s->y, _boxW, _boxH, BLACK);
+
+  // Draw elements of list with offset of the box
+  for (int i = 0; i < s->showElements; i++)
+  {
+    // Draw horizontal lines to create "box" with elements in
+    display.drawFastHLine(s->x, (s->y) + ((s->fontScale) * 8 * i) + (i * 6), (s->fontScale) * 6 * (s->nMax) + 6, BLACK);
+    if (s->list[i + s->startElement] != NULL)
+    {
+      // Now draw each character (because it's fixed number of letters in each element)
       display.setCursor(s->x + 4, (s->y) + ((s->fontScale) * 8 * i) + (i * 6) + 4);
-      for (int j = 0; (j < s->nMax) && (s->list[i][j] != NULL); j++)
+      for (int j = 0; (j < s->nMax) && (s->list[i + s->startElement][j] != NULL); j++)
       {
-        display.write(s->list[i][j]);
+        display.write(s->list[i + s->startElement][j]);
       }
     }
   }
 
-  return 0;
+  return _selected;
 }
