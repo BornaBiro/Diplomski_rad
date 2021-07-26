@@ -5,6 +5,7 @@
 #include "stm32l0xx_hal.h"
 
 extern I2C_HandleTypeDef hi2c1;
+extern UART_HandleTypeDef huart2;
 
 // Library https://github.com/sparkfun/BMP180_Breakout_Arduino_Library is adopted to work with Atollic
 #define BMP180_ADDR 0xEE
@@ -17,6 +18,7 @@ extern I2C_HandleTypeDef hi2c1;
 #define	BMP180_COMMAND_PRESSURE3 0xF4
 
 void BMP180_Init();
-
+int16_t BMP180_ReadTemperatue();
+uint16_t BMP180_ReadPressure();
 
 #endif

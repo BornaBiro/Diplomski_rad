@@ -15,12 +15,12 @@ void glassLCD_Begin()
 void glassLCD_WriteData(char* s)
 {
 	// Get the size of string
-	uint8_t _n = strlen(s) + 1;
+	uint8_t _n = strlen(s);
 
 	//Convert ASCII to segment data and save it to buffer
 	for (int i = 0; i < _n; i++)
 	{
-		_lcdTemp[i] = asciiToSeg[s[i] - ' '];
+		_lcdTemp[i] |= asciiToSeg[s[i] - ' '];
 	}
 }
 
@@ -78,16 +78,18 @@ void glassLCD_SetDot(uint8_t _dot)
 	_dots = _dot;
 }
 
-void glassLCD_WriteArrow(uint8_t _n, uint8_t _en)
+void glassLCD_WriteArrow(uint8_t _a)
 {
-  _n &= 7;
-  if (_en)
+  for (int i = 0; i < 8; i++)
   {
-	  _lcdTemp[_n] |= SEGW;
-  }
-  else
-  {
-	  _lcdTemp[_n] &= ~(SEGW);
+	  if (_a & 1 << (7 - i))
+  	  {
+	  	  _lcdTemp[i] |= SEGW;
+  	  }
+  	  else
+  	  {
+	  	  _lcdTemp[i] &= ~(SEGW);
+  	  }
   }
 }
 

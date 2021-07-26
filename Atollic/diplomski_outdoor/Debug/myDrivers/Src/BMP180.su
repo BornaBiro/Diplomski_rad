@@ -1,1 +1,3 @@
-BMP180.c:7:6:BMP180_Init	0	static
+BMP180.c:8:6:BMP180_Init	96	static
+BMP180.c:50:9:BMP180_ReadTemperatue	40	static
+BMP180.c:75:10:BMP180_ReadPressure	56	static

@@ -2,16 +2,6 @@
 
 extern I2C_HandleTypeDef hi2c1;
 
-uint8_t SHT21_Begin()
-{
-	return SHT21_CheckSensor();
-}
-
-uint8_t SHT21_CheckSensor()
-{
-	return HAL_I2C_Master_Transmit(&hi2c1, SHT21_ADDRESS, NULL, 0, 1000) == HAL_OK? 1:0;
-}
-
 int16_t SHT21_ReadHumidity() {
 	// Start the measurment and get the data
 	uint16_t _rh = SHT21_ReadRegister(SHT21_TRIG_HUM_MEAS_NO_HOLD);
@@ -50,9 +40,4 @@ uint16_t SHT21_ReadRegister(uint8_t _reg)
 
 	// Pack it!
 	return (uint16_t)(_data[0] << 8) | _data[1];
-}
-
-void SHT21_SoftReset()
-{
-
 }

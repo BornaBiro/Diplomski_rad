@@ -18,7 +18,7 @@
 // 1:3 LCD Multiplex, 1/3 bias, LCD Enabled
 #define LCD_CONFIG    0b01000000 | PCF85176_DISP_ON | PCF85176_1_3_BIAS | PCF85176_1_3_MPX
 
-static const uint16_t asciiToSeg[] = {SPACE, BLANK, QUMARK, BLANK, BLANK, PERC, BLANK, APH, OBRAC, CBRAC, BLANK, BLANK, BLANK, MINUS, BLANK, BLANK, NUM0, NUM1, NUM2, NUM3, NUM4, NUM5, NUM6, NUM7, NUM8, NUM9, BLANK, BLANK, BLANK, BLANK, BLANK, BLANK, BLANK,
+static const uint8_t asciiToSeg[] = {SPACE, BLANK, QUMARK, BLANK, BLANK, PERC, BLANK, APH, OBRAC, CBRAC, BLANK, BLANK, BLANK, MINUS, BLANK, BLANK, NUM0, NUM1, NUM2, NUM3, NUM4, NUM5, NUM6, NUM7, NUM8, NUM9, BLANK, BLANK, BLANK, BLANK, BLANK, BLANK, BLANK,
                                       LETA, LETB, LETC, LETD, LETE, LETF, LETG, LETH,
                                      };
 
@@ -29,7 +29,7 @@ void glassLCD_Clear();
 //void glassLCD_State(uint8_t _state);
 //void glassLCD_SetDot(uint8_t _n, uint8_t _dot);
 void glassLCD_SetDot(uint8_t _dot);
-void glassLCD_WriteArrow(uint8_t _n, uint8_t _en);
+void glassLCD_WriteArrow(uint8_t _a);
 void glassLCD_WriteCmd(uint8_t _comm);
 
 #endif

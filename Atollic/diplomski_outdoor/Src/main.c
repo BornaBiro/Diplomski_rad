@@ -30,6 +30,7 @@
 #include "SHT21.h"
 #include "rtc.h"
 #include "sleep.h"
+#include "BMP180.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -114,16 +115,25 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   // Init Humidity & Temp sensor
-  SHT21_Begin();
+  //SHT21_Begin();
 
   // Init LCD Driver
   glassLCD_Begin();
 
+  // Init Pressure & Temp sensor
+  BMP180_Init();
+
   // Set time on RTC and alarm for wake up (FOR TEST ONLY!)
   RTC_SetTime(TIME_HOURS(), TIME_MINUTES(), TIME_SECONDS());
+
+  // Enable Interrupt on pin (Blue Button on Nucleo-L053 board)
+  //HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);
+  //HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
+
+  // Test LCD (and wait for debugger to connect)
   glassLCD_WriteData(lcdTest);
   glassLCD_SetDot(0b11111111);
-  glassLCD_WriteArrow(0, 1);
+  glassLCD_WriteArrow(0b11111111);
   glassLCD_Update();
   HAL_Delay(2000);
   /* USER CODE END 2 */
@@ -132,15 +142,28 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  uint8_t k = 0;
   while (1)
   {
 	  char text[40];
-	  int16_t _hum = SHT21_ReadHumidity();
-	  int16_t _t = SHT21_ReadTemperature();
-	  sprintf(text, "%2d%01dC %2d%01d", _t / 100, abs(_t / 10 % 10), _hum / 100, abs(_hum / 10 % 10));
 	  glassLCD_Clear();
+	  if (k % 2)
+	  {
+		  uint16_t _p = BMP180_ReadPressure();
+		  sprintf(text, "%4d%1d", _p / 10, abs(_p % 10));
+		  glassLCD_SetDot(0b00010000);
+		  glassLCD_WriteArrow(0b01000000);
+	  }
+	  else
+	  {
+		  int16_t _hum = SHT21_ReadHumidity();
+		  int16_t _t = SHT21_ReadTemperature();
+		  sprintf(text, "%2d%01dC %2d%01d", _t / 100, abs(_t / 10 % 10), _hum / 100, abs(_hum / 10 % 10));
+		  glassLCD_SetDot(0b01000010);
+		  glassLCD_WriteArrow(0b10000000);
+	  }
+	  k++;
 	  glassLCD_WriteData(text);
-	  glassLCD_SetDot(0b01000010);
 	  glassLCD_Update();
 	  RTC_SetAlarmEpoch(RTC_GetEpoch() + 60, RTC_ALARMMASK_DATEWEEKDAY);
 	  Sleep_LightSleep();
@@ -219,7 +242,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x0010061A;
+  hi2c1.Init.Timing = 0x00303D5B;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -421,8 +444,12 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
 
 }
 
