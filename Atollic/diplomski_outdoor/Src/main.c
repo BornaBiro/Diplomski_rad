@@ -31,6 +31,7 @@
 #include "rtc.h"
 #include "sleep.h"
 #include "BMP180.h"
+#include "Si1147.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -61,6 +62,7 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 const char lcdTest[] = {"88888888"};
+const char lcdErr0[] = {"ERR01"};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -123,6 +125,12 @@ int main(void)
   // Init Pressure & Temp sensor
   BMP180_Init();
 
+  // Init Si1147 Sensor for ALS and UV
+  Si1147_Init();
+
+  // Enable UV meas.
+  Si1147_SetUV();
+
   // Set time on RTC and alarm for wake up (FOR TEST ONLY!)
   RTC_SetTime(TIME_HOURS(), TIME_MINUTES(), TIME_SECONDS());
 
@@ -147,14 +155,7 @@ int main(void)
   {
 	  char text[40];
 	  glassLCD_Clear();
-	  if (k % 2)
-	  {
-		  uint16_t _p = BMP180_ReadPressure();
-		  sprintf(text, "%4d%1d", _p / 10, abs(_p % 10));
-		  glassLCD_SetDot(0b00010000);
-		  glassLCD_WriteArrow(0b01000000);
-	  }
-	  else
+	  if (k == 0)
 	  {
 		  int16_t _hum = SHT21_ReadHumidity();
 		  int16_t _t = SHT21_ReadTemperature();
@@ -162,7 +163,24 @@ int main(void)
 		  glassLCD_SetDot(0b01000010);
 		  glassLCD_WriteArrow(0b10000000);
 	  }
+	  if (k == 1)
+	  {
+		  uint16_t _p = BMP180_ReadPressure();
+		  sprintf(text, "%4d%1d", _p / 10, abs(_p % 10));
+		  glassLCD_SetDot(0b00010000);
+		  glassLCD_WriteArrow(0b01000000);
+	  }
+	  if (k == 2)
+	  {
+		  Si1147_ForceUV();
+		  int16_t _uv = Si1147_GetVis();
+		  int16_t _vis = Si1147_GetVis();
+		  sprintf(text, "%03d %4d", _uv/10, (int)(_vis * 0.282 * 16.5));
+		  glassLCD_SetDot(0b01000000);
+		  glassLCD_WriteArrow(0b00100000);
+	  }
 	  k++;
+	  k = k % 3;
 	  glassLCD_WriteData(text);
 	  glassLCD_Update();
 	  RTC_SetAlarmEpoch(RTC_GetEpoch() + 60, RTC_ALARMMASK_DATEWEEKDAY);
@@ -446,6 +464,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SI1147_INT_Pin */
+  GPIO_InitStruct.Pin = SI1147_INT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(SI1147_INT_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);

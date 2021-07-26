@@ -41,7 +41,7 @@ uint8_t Si1147_GetResponse()
 	return tempData;
 }
 
-uint8_t Si1147_Init(uint8_t _intPin)
+uint8_t Si1147_Init()
 {
 	uint8_t tempRegs[2];
 	uint8_t _res = 0;
@@ -126,11 +126,13 @@ void Si1147_SetUV()
 
 void Si1147_ForceUV()
 {
+	uint32_t _timeout = HAL_GetTick();
+
 	// Force one UV meas.
 	Si1147_WriteReg(SI1147_COMMAND, SI1147_ALS_FORCE);
 
 	// Wait for interrupt event
-	//while (digitalRead(A0));
+	while ((HAL_GPIO_ReadPin(SI1147_INT_GPIO_Port, SI1147_INT_Pin) == GPIO_PIN_SET) && ((HAL_GetTick() - _timeout) < SI1147_TIMEOUT));
 
 	// Clear interrupt by sending 1 to corresponding interrupt
 	Si1147_WriteReg(SI1147_IRQ_STATUS, 1);
