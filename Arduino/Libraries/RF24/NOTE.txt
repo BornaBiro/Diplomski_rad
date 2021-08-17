@@ -1,0 +1,1 @@
+This is heavily modified RF24 library from https://github.com/nRF24/RF24 in order to work with Inkplate6 board based around ESP32 and MCP23017 for GPIO.
