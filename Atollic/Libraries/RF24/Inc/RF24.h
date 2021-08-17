@@ -102,8 +102,12 @@ typedef enum {
 } rf24_crclength_e;
 
 
-uint16_t ce_pin; /**< "Chip Enable" pin, activates the RX or TX role */
-uint16_t csn_pin; /**< SPI Chip select */
+//uint16_t ce_pin; /**< "Chip Enable" pin, activates the RX or TX role */
+//uint16_t csn_pin; /**< SPI Chip select */
+uint16_t ce_pin;
+uint16_t csn_pin;
+GPIO_TypeDef* ce_port;
+GPIO_TypeDef* csn_port;
 uint8_t status; /** The status byte returned from every SPI transaction */
 uint8_t payload_size; /**< Fixed size of payloads */
 uint8_t dynamic_payloads_enabled; /**< Whether dynamic payloads are enabled. */
@@ -116,7 +120,7 @@ uint8_t _is_p_variant; /** For storing the result of testing the toggleFeatures(
 void RF24_beginTransaction();
 void RF24_endTransaction();
 
-void RF24_init();
+void RF24_init(GPIO_TypeDef* _ce_port, uint16_t _ce_pin, GPIO_TypeDef* _cs_port, uint16_t _cs_pin);
 uint8_t RF24_begin();
 uint8_t RF24_isChipConnected();
 void RF24_startListening(void);
@@ -147,7 +151,7 @@ uint8_t RF24_flush_tx(void);
 uint8_t RF24_flush_rx(void);
 uint8_t RF24_testCarrier(void);
 uint8_t RF24_testRPD(void);
-uint8_t RF24_isValid();
+//uint8_t RF24_isValid();
 void RF24_closeReadingPipe(uint8_t pipe);
 uint8_t RF24_failureDetected;
 void RF24_setAddressWidth(uint8_t a_width);

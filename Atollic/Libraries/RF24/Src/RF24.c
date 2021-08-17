@@ -10,17 +10,15 @@
 #include "RF24_config.h"
 #include "RF24.h"
 
-uint8_t RF24_isValid()
-{
-	//return ce_pin != 0xff && csn_pin != 0xff;
-	return 1;
-}
+//uint8_t RF24_isValid()
+//{
+//  return ce_pin != 0xff && csn_pin != 0xff;
+//}
 /****************************************************************************/
 
 void RF24_csn(uint8_t mode)
 {
-    //_ink->digitalWriteInternal(MCP23017_INT_ADDR, _ink->mcpRegsInt, 14, mode & 1);
-	HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, mode);
+	HAL_GPIO_WritePin(csn_port, csn_pin, mode);
     HAL_Delay(1);
 }
 
@@ -28,8 +26,7 @@ void RF24_csn(uint8_t mode)
 
 void RF24_ce(uint8_t level)
 {
-    //_ink->digitalWriteInternal(MCP23017_INT_ADDR, _ink->mcpRegsInt, 15, level & 1);
-	HAL_GPIO_WritePin(CE_GPIO_Port, CE_Pin, level);
+	HAL_GPIO_WritePin(ce_port, ce_pin, level);
 	HAL_Delay(1);
 }
 
@@ -208,10 +205,12 @@ uint8_t RF24_get_status(void)
 
 /****************************************************************************/
 
-void RF24_init()
+void RF24_init(GPIO_TypeDef* _ce_port, uint16_t _ce_pin, GPIO_TypeDef* _cs_port, uint16_t _cs_pin)
 {
-	//ce_pin = __cepin;
-    //csn_pin = __cspin;
+    ce_port = _ce_port;
+    ce_pin = _ce_pin;
+    csn_port = _cs_port;
+    csn_pin = _cs_pin;
     payload_size = 32;
 	dynamic_payloads_enabled = 1;
 	addr_width = 5;
