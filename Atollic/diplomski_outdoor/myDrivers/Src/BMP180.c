@@ -5,17 +5,17 @@ static int16_t AC1,AC2,AC3,VB1,VB2,MB,MC,MD;
 static uint16_t AC4,AC5,AC6;
 static double c5,c6,mc,md,xx0,xx1,xx2,yy0,yy1,yy2,p0,p1,p2;
 
-void BMP180_Init()
+uint8_t BMP180_Init()
 {
 	uint8_t _calData[22];
 	double c3,c4,b1;
 
 	// Set data pointer to calibration data
 	_calData[0] = 0xAA;
-	HAL_I2C_Master_Transmit(&hi2c1, BMP180_ADDR, _calData, 1, 1000);
+	uint8_t _error = HAL_I2C_Master_Transmit(&hi2c1, BMP180_ADDR, _calData, 1, 1000);
 
 	// Get all calibration data
-	HAL_I2C_Master_Receive(&hi2c1, BMP180_ADDR, _calData, 22, 1000);
+	_error |= HAL_I2C_Master_Receive(&hi2c1, BMP180_ADDR, _calData, 22, 1000);
 
 	AC1 = (_calData[0] << 8) | _calData[1];
 	AC2 = (_calData[2] << 8) | _calData[3];
@@ -45,6 +45,7 @@ void BMP180_Init()
 	p0 = (3791.0 - 8.0) / 1600.0;
 	p1 = 1.0 - 7357.0 * pow(2,-20);
 	p2 = 3038.0 * 100.0 * pow(2,-36);
+	return (_error == 0?1:0);
 }
 
 int16_t BMP180_ReadTemperatue()

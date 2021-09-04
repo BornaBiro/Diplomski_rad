@@ -4,13 +4,13 @@ extern RTC_HandleTypeDef hrtc;
 static time_t _epoch;
 static const time_t* _epochHandler = &_epoch;
 
-void RTC_SetTime(uint8_t _h, uint8_t _m, uint8_t _s)
+uint8_t RTC_SetTime(uint8_t _h, uint8_t _m, uint8_t _s)
 {
 	RTC_TimeTypeDef sTime = {0};
 	sTime.Hours = _h;
 	sTime.Minutes = _m;
 	sTime.Seconds = _s;
-	HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+	return HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
 }
 
 uint32_t RTC_GetEpoch()

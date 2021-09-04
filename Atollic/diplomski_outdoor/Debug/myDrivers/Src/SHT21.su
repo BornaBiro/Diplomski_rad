@@ -1,3 +1,4 @@
-SHT21.c:28:10:SHT21_ReadRegister	40	static
-SHT21.c:5:9:SHT21_ReadHumidity	8	static
-SHT21.c:16:9:SHT21_ReadTemperature	8	static
+SHT21.c:6:9:SHT21_Init	24	static
+SHT21.c:36:10:SHT21_ReadRegister	40	static
+SHT21.c:13:9:SHT21_ReadHumidity	8	static
+SHT21.c:24:9:SHT21_ReadTemperature	8	static

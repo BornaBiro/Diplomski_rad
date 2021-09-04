@@ -5,7 +5,7 @@
 #include "stm32l0xx_hal.h"
 #include "time.h"
 
-void RTC_SetTime(uint8_t _h, uint8_t _m, uint8_t _s);
+uint8_t RTC_SetTime(uint8_t _h, uint8_t _m, uint8_t _s);
 uint32_t RTC_GetEpoch();
 struct tm RTC_GetData();
 void RTC_SetAlarmEpoch(uint32_t _alarmEpoch, uint32_t _mask);

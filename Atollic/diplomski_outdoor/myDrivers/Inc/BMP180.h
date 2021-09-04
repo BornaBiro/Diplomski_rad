@@ -17,7 +17,7 @@ extern UART_HandleTypeDef huart2;
 #define	BMP180_COMMAND_PRESSURE2 0xB4
 #define	BMP180_COMMAND_PRESSURE3 0xF4
 
-void BMP180_Init();
+uint8_t BMP180_Init();
 int16_t BMP180_ReadTemperatue();
 uint16_t BMP180_ReadPressure();
 

@@ -12,6 +12,7 @@ void Sleep_LightSleep()
 	HAL_I2C_DeInit(&hi2c1);
 	HAL_SPI_DeInit(&hspi1);
 	HAL_UART_DeInit(&huart2);
+	HAL_ADC_DeInit(&hadc);
 
 	// Enter "light sleep" mode and wait for Interrupt to wake up (WFI - Wait For Interrupt)
 	HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
@@ -28,4 +29,5 @@ void Sleep_LightSleep()
 	HAL_I2C_Init(&hi2c1);
 	HAL_SPI_Init(&hspi1);
 	HAL_UART_Init(&huart2);
+	HAL_ADC_Init(&hadc);
 }

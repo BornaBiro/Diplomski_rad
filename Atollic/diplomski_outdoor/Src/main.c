@@ -32,6 +32,7 @@
 #include "sleep.h"
 #include "BMP180.h"
 #include "Si1147.h"
+#include "RF24.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,6 +45,16 @@
 #define TIME_HOURS() (((__TIME__[0] - '0') * 10) + ((__TIME__[1] - '0')))
 #define TIME_MINUTES() (((__TIME__[3] - '0') * 10) + ((__TIME__[4] - '0')))
 #define TIME_SECONDS() (((__TIME__[6] - '0') * 10) + ((__TIME__[7] - '0')))
+
+#define NO_DEEP_SLEEP   0
+#define DEEP_SLEEP      1
+#define BMP180_ERROR    1
+#define SHT21_ERROR     2
+#define SI1147_ERROR    3
+#define AS5600_ERROR    4
+#define NRF24_ERROR     5
+#define RTC_ERROR       6
+#define SYNC_HEADER     0b00110101
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -52,6 +63,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc;
+
 I2C_HandleTypeDef hi2c1;
 
 RTC_HandleTypeDef hrtc;
@@ -61,8 +74,19 @@ SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+uint64_t addr[2] = {0x65646F4E31, 0x65646F4E32};
+uint8_t rfBuffer[32];
+
+struct syncStructHandle{
+  uint8_t header;
+  uint32_t myEpoch;
+  uint32_t readInterval;
+  uint32_t sendInterval;
+}syncStruct = {SYNC_HEADER, 0, 300, 1800};
+
 const char lcdTest[] = {"88888888"};
-const char lcdErr0[] = {"ERR01"};
+const char errStr[] = {"ERR-%03d"};
+const char syncStr[] = {"SYNC %3d"};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -72,8 +96,9 @@ static void MX_I2C1_Init(void);
 static void MX_RTC_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_ADC_Init(void);
 /* USER CODE BEGIN PFP */
-
+void writeError(uint8_t _e, uint8_t _forceSleep);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -114,29 +139,11 @@ int main(void)
   MX_RTC_Init();
   MX_SPI1_Init();
   MX_USART2_UART_Init();
+  MX_ADC_Init();
   /* USER CODE BEGIN 2 */
-
-  // Init Humidity & Temp sensor
-  //SHT21_Begin();
 
   // Init LCD Driver
   glassLCD_Begin();
-
-  // Init Pressure & Temp sensor
-  BMP180_Init();
-
-  // Init Si1147 Sensor for ALS and UV
-  Si1147_Init();
-
-  // Enable UV meas.
-  Si1147_SetUV();
-
-  // Set time on RTC and alarm for wake up (FOR TEST ONLY!)
-  RTC_SetTime(TIME_HOURS(), TIME_MINUTES(), TIME_SECONDS());
-
-  // Enable Interrupt on pin (Blue Button on Nucleo-L053 board)
-  //HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);
-  //HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
 
   // Test LCD (and wait for debugger to connect)
   glassLCD_WriteData(lcdTest);
@@ -144,9 +151,75 @@ int main(void)
   glassLCD_WriteArrow(0b11111111);
   glassLCD_Update();
   HAL_Delay(2000);
+
+  // Init Pressure & Temp sensor
+  if (!BMP180_Init()) writeError(BMP180_ERROR, DEEP_SLEEP);
+
+  // Init Humidity & Temp sensor
+  if (!SHT21_Init()) writeError(SHT21_ERROR, DEEP_SLEEP);
+
+  // Init Si1147 Sensor for ALS and UV
+  if (!Si1147_Init()) writeError(SI1147_ERROR, DEEP_SLEEP);
+
+  RF24_init(NRF24_CE_GPIO_Port, NRF24_CE_Pin, NRF24_CSN_GPIO_Port, NRF24_CSN_Pin);
+  if (!RF24_begin()) writeError(NRF24_ERROR, DEEP_SLEEP);
+
+  // Enable UV meas.
+  Si1147_SetUV();
+
+  // Set time on RTC and alarm for wake up (FOR TEST ONLY!)
+  if (RTC_SetTime(TIME_HOURS(), TIME_MINUTES(), TIME_SECONDS())) writeError(RTC_ERROR, DEEP_SLEEP);
   /* USER CODE END 2 */
- 
- 
+
+  // Setup the radio module
+  RF24_setAutoAck(1);
+  RF24_enableAckPayload();
+  RF24_setChannel(0);
+  RF24_setDataRate(RF24_250KBPS);
+  RF24_setPALevel(RF24_PA_MAX, 1);
+  RF24_openWritingPipe(addr[0]);
+  RF24_openReadingPipe(1, addr[1]);
+  RF24_stopListening();
+
+  // Wait for sync from indoor unit
+  uint8_t syncOk = 0;
+  uint8_t syncTimeout = 120;
+  uint32_t time1 = HAL_GetTick();
+  while (!syncOk && syncTimeout != 0)
+  {
+    if ((HAL_GetTick() - time1) > 1000)
+    {
+      time1 = HAL_GetTick();
+      char lcdTemp[9];
+      sprintf(lcdTemp, syncStr, syncTimeout--);
+      glassLCD_Clear();
+      glassLCD_WriteData(lcdTemp);
+      glassLCD_Update();
+
+      syncStruct.myEpoch = RTC_GetEpoch();
+      RF24_write(&syncStruct, sizeof(syncStruct), 0);
+      if (RF24_isAckPayloadAvailable())
+      {
+        while(RF24_available(NULL))
+        {
+          RF24_read(rfBuffer, 32);
+        }
+        if (rfBuffer[0] == SYNC_HEADER)
+        {
+          memcpy(&syncStruct, rfBuffer, sizeof(syncStruct));
+          // Just for debug, remove it later!
+          char mymy[9];
+          sprintf(mymy, "%d", syncStruct.myEpoch);
+          glassLCD_Clear();
+          glassLCD_WriteData(mymy);
+          glassLCD_Update();
+          HAL_Delay(1000);
+          // ----------------------------------
+          syncOk = 1;
+        }
+      }
+    }
+  }
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -173,14 +246,39 @@ int main(void)
 	  if (k == 2)
 	  {
 		  Si1147_ForceUV();
-		  int16_t _uv = Si1147_GetVis();
+		  int16_t _uv = Si1147_GetUV();
 		  int16_t _vis = Si1147_GetVis();
 		  sprintf(text, "%03d %4d", _uv/10, (int)(_vis * 0.282 * 16.5));
 		  glassLCD_SetDot(0b01000000);
 		  glassLCD_WriteArrow(0b00100000);
 	  }
+	  if (k == 3)
+	  {
+		  // Calibrate ADC
+		  HAL_ADCEx_Calibration_Start(&hadc, ADC_SINGLE_ENDED);
+		  uint32_t rawAdc;
+		  double voltage;
+		  double current;
+		  double energyJ;
+		  double energy;
+		  // Start ADC conversion
+		  HAL_ADC_Start(&hadc);
+		  // Wait for conversion to be coplete
+		  HAL_ADC_PollForConversion(&hadc, 1000);
+		  // Get the ADC value
+		  rawAdc = HAL_ADC_GetValue(&hadc);
+		  // Calculations for volage, current and energy
+		  voltage = (rawAdc / 4095.0 * 3.3) - 0.0795;
+		  current = voltage / (220 / 4.7);
+		  energy = current / 45E-3 * 1000;
+		  energyJ = (1 / 1E4) * energy * 600;
+		  sprintf(text, "%2d%1d %4d", (int)(energyJ), (int)(energyJ * 10) % 10, (int)(energy));
+		  glassLCD_SetDot(0b01000000);
+		  glassLCD_WriteArrow(0b00010000);
+	  }
+
 	  k++;
-	  k = k % 3;
+	  k = k % 4;
 	  glassLCD_WriteData(text);
 	  glassLCD_Update();
 	  RTC_SetAlarmEpoch(RTC_GetEpoch() + 60, RTC_ALARMMASK_DATEWEEKDAY);
@@ -242,6 +340,63 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief ADC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC_Init(void)
+{
+
+  /* USER CODE BEGIN ADC_Init 0 */
+
+  /* USER CODE END ADC_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC_Init 1 */
+
+  /* USER CODE END ADC_Init 1 */
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion) 
+  */
+  hadc.Instance = ADC1;
+  hadc.Init.OversamplingMode = ENABLE;
+  hadc.Init.Oversample.Ratio = ADC_OVERSAMPLING_RATIO_16;
+  hadc.Init.Oversample.RightBitShift = ADC_RIGHTBITSHIFT_4;
+  hadc.Init.Oversample.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
+  hadc.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV64;
+  hadc.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc.Init.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
+  hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc.Init.ContinuousConvMode = DISABLE;
+  hadc.Init.DiscontinuousConvMode = DISABLE;
+  hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc.Init.DMAContinuousRequests = DISABLE;
+  hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+  hadc.Init.LowPowerAutoWait = DISABLE;
+  hadc.Init.LowPowerFrequencyMode = DISABLE;
+  hadc.Init.LowPowerAutoPowerOff = DISABLE;
+  if (HAL_ADC_Init(&hadc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure for the selected ADC regular channel to be converted. 
+  */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
+  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC_Init 2 */
+
+  /* USER CODE END ADC_Init 2 */
+
 }
 
 /**
@@ -459,17 +614,43 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(NRF24_CE_GPIO_Port, NRF24_CE_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(NRF24_CSN_GPIO_Port, NRF24_CSN_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PA0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : NRF24_CE_Pin */
+  GPIO_InitStruct.Pin = NRF24_CE_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(NRF24_CE_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : SI1147_INT_Pin */
   GPIO_InitStruct.Pin = SI1147_INT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(SI1147_INT_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : NRF24_CSN_Pin */
+  GPIO_InitStruct.Pin = NRF24_CSN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(NRF24_CSN_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);
@@ -478,7 +659,16 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void writeError(uint8_t _e, uint8_t _forceSleep)
+{
+  char _c[9];
+  sprintf(_c, errStr, _e);
+  glassLCD_Clear();
+  glassLCD_WriteData(_c);
+  glassLCD_Update();
+  HAL_Delay(50);
+  if (_forceSleep) HAL_PWR_EnterSTANDBYMode();
+}
 /* USER CODE END 4 */
 
 /**
