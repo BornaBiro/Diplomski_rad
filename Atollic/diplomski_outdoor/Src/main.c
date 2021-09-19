@@ -26,6 +26,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
+#include "myStructs.h"
 #include "glassLCD.h"
 #include "SHT21.h"
 #include "rtc.h"
@@ -33,6 +35,7 @@
 #include "BMP180.h"
 #include "Si1147.h"
 #include "RF24.h"
+#include "communication.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -54,7 +57,6 @@
 #define AS5600_ERROR    4
 #define NRF24_ERROR     5
 #define RTC_ERROR       6
-#define SYNC_HEADER     0b00110101
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -74,19 +76,10 @@ SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint64_t addr[2] = {0x65646F4E31, 0x65646F4E32};
-uint8_t rfBuffer[32];
-
-struct syncStructHandle{
-  uint8_t header;
-  uint32_t myEpoch;
-  uint32_t readInterval;
-  uint32_t sendInterval;
-}syncStruct = {SYNC_HEADER, 0, 300, 1800};
-
+struct syncStructHandle syncStruct = {SYNC_HEADER, 0, 300, 1800};
 const char lcdTest[] = {"88888888"};
 const char errStr[] = {"ERR-%03d"};
-const char syncStr[] = {"SYNC %3d"};
+volatile uint32_t interruptButton = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -169,57 +162,16 @@ int main(void)
 
   // Set time on RTC and alarm for wake up (FOR TEST ONLY!)
   if (RTC_SetTime(TIME_HOURS(), TIME_MINUTES(), TIME_SECONDS())) writeError(RTC_ERROR, DEEP_SLEEP);
+
+  // Setup RF communication (speed, RF Channel, RF Power, rtc)
+  communication_Setup();
+
+  // Wait for sync signal from indoor station
+  communication_Sync(&syncStruct);
+  RF24_powerDown();
   /* USER CODE END 2 */
-
-  // Setup the radio module
-  RF24_setAutoAck(1);
-  RF24_enableAckPayload();
-  RF24_setChannel(0);
-  RF24_setDataRate(RF24_250KBPS);
-  RF24_setPALevel(RF24_PA_MAX, 1);
-  RF24_openWritingPipe(addr[0]);
-  RF24_openReadingPipe(1, addr[1]);
-  RF24_stopListening();
-
-  // Wait for sync from indoor unit
-  uint8_t syncOk = 0;
-  uint8_t syncTimeout = 120;
-  uint32_t time1 = HAL_GetTick();
-  while (!syncOk && syncTimeout != 0)
-  {
-    if ((HAL_GetTick() - time1) > 1000)
-    {
-      time1 = HAL_GetTick();
-      char lcdTemp[9];
-      sprintf(lcdTemp, syncStr, syncTimeout--);
-      glassLCD_Clear();
-      glassLCD_WriteData(lcdTemp);
-      glassLCD_Update();
-
-      syncStruct.myEpoch = RTC_GetEpoch();
-      RF24_write(&syncStruct, sizeof(syncStruct), 0);
-      if (RF24_isAckPayloadAvailable())
-      {
-        while(RF24_available(NULL))
-        {
-          RF24_read(rfBuffer, 32);
-        }
-        if (rfBuffer[0] == SYNC_HEADER)
-        {
-          memcpy(&syncStruct, rfBuffer, sizeof(syncStruct));
-          // Just for debug, remove it later!
-          char mymy[9];
-          sprintf(mymy, "%d", syncStruct.myEpoch);
-          glassLCD_Clear();
-          glassLCD_WriteData(mymy);
-          glassLCD_Update();
-          HAL_Delay(1000);
-          // ----------------------------------
-          syncOk = 1;
-        }
-      }
-    }
-  }
+ 
+ 
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -276,13 +228,15 @@ int main(void)
 		  glassLCD_SetDot(0b01000000);
 		  glassLCD_WriteArrow(0b00010000);
 	  }
-
-	  k++;
-	  k = k % 4;
 	  glassLCD_WriteData(text);
 	  glassLCD_Update();
 	  RTC_SetAlarmEpoch(RTC_GetEpoch() + 60, RTC_ALARMMASK_DATEWEEKDAY);
 	  Sleep_LightSleep();
+	  if (interruptButton == GPIO_PIN_8)
+	  {
+	      k++;
+	      k = k % 4;
+	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -620,17 +574,17 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(NRF24_CSN_GPIO_Port, NRF24_CSN_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
-
   /*Configure GPIO pin : PA0 */
   GPIO_InitStruct.Pin = GPIO_PIN_0;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : B3_Pin */
+  GPIO_InitStruct.Pin = B3_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(B3_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : NRF24_CE_Pin */
   GPIO_InitStruct.Pin = NRF24_CE_Pin;
@@ -638,6 +592,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(NRF24_CE_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : B2_Pin */
+  GPIO_InitStruct.Pin = B2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(B2_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SI1147_INT_Pin */
   GPIO_InitStruct.Pin = SI1147_INT_Pin;
@@ -653,6 +613,9 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(NRF24_CSN_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
+
   HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
 
@@ -669,6 +632,12 @@ void writeError(uint8_t _e, uint8_t _forceSleep)
   HAL_Delay(50);
   if (_forceSleep) HAL_PWR_EnterSTANDBYMode();
 }
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    interruptButton = GPIO_Pin;
+}
+
 /* USER CODE END 4 */
 
 /**

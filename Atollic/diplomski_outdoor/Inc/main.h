@@ -58,15 +58,18 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define B1_Pin GPIO_PIN_13
-#define B1_GPIO_Port GPIOC
-#define B1_EXTI_IRQn EXTI4_15_IRQn
 #define USART_TX_Pin GPIO_PIN_2
 #define USART_TX_GPIO_Port GPIOA
 #define USART_RX_Pin GPIO_PIN_3
 #define USART_RX_GPIO_Port GPIOA
+#define B3_Pin GPIO_PIN_1
+#define B3_GPIO_Port GPIOB
+#define B3_EXTI_IRQn EXTI0_1_IRQn
 #define NRF24_CE_Pin GPIO_PIN_7
 #define NRF24_CE_GPIO_Port GPIOC
+#define B2_Pin GPIO_PIN_8
+#define B2_GPIO_Port GPIOA
+#define B2_EXTI_IRQn EXTI4_15_IRQn
 #define TMS_Pin GPIO_PIN_13
 #define TMS_GPIO_Port GPIOA
 #define TCK_Pin GPIO_PIN_14
@@ -76,7 +79,7 @@ void Error_Handler(void);
 #define NRF24_CSN_Pin GPIO_PIN_6
 #define NRF24_CSN_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
-
+#define SYNC_HEADER     0b00110101
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
