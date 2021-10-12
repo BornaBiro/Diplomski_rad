@@ -80,6 +80,7 @@ void Error_Handler(void);
 #define NRF24_CSN_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 #define SYNC_HEADER     0b00110101
+#define DATA1_HEADER    0b00010001
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

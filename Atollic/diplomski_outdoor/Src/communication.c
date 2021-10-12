@@ -32,7 +32,7 @@ uint8_t communication_Sync(struct syncStructHandle *_s)
             glassLCD_WriteData(lcdTemp);
             glassLCD_Update();
 
-            _s->myEpoch = RTC_GetEpoch();
+            _s->myEpoch = RTC_GetTime();
             RF24_write(_s, sizeof(struct syncStructHandle), 0);
             if (RF24_isAckPayloadAvailable())
             {

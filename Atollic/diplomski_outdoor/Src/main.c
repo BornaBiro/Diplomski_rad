@@ -77,9 +77,11 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 struct syncStructHandle syncStruct = {SYNC_HEADER, 0, 300, 1800};
+struct measruementHandle weatherData;
 const char lcdTest[] = {"88888888"};
 const char errStr[] = {"ERR-%03d"};
 volatile uint32_t interruptButton = 0;
+uint32_t sendInterval;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -92,6 +94,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_ADC_Init(void);
 /* USER CODE BEGIN PFP */
 void writeError(uint8_t _e, uint8_t _forceSleep);
+void readWeatherData(struct measruementHandle *_w);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -161,13 +164,20 @@ int main(void)
   Si1147_SetUV();
 
   // Set time on RTC and alarm for wake up (FOR TEST ONLY!)
-  if (RTC_SetTime(TIME_HOURS(), TIME_MINUTES(), TIME_SECONDS())) writeError(RTC_ERROR, DEEP_SLEEP);
+  RTC_SetTime(1609459200);
 
   // Setup RF communication (speed, RF Channel, RF Power, rtc)
   communication_Setup();
 
   // Wait for sync signal from indoor station
-  communication_Sync(&syncStruct);
+  if (communication_Sync(&syncStruct))
+  {
+      RTC_SetTime(syncStruct.myEpoch);
+      RTC_SetAlarmEpoch(syncStruct.sendEpoch, RTC_ALARMMASK_DATEWEEKDAY);
+      sendInterval = syncStruct.sendEpoch - syncStruct.myEpoch;
+  }
+  RF24_flush_rx();
+  RF24_flush_tx();
   RF24_powerDown();
   /* USER CODE END 2 */
  
@@ -230,12 +240,67 @@ int main(void)
 	  }
 	  glassLCD_WriteData(text);
 	  glassLCD_Update();
-	  RTC_SetAlarmEpoch(RTC_GetEpoch() + 60, RTC_ALARMMASK_DATEWEEKDAY);
+	  //RTC_SetAlarmEpoch(RTC_GetEpoch() + 60, RTC_ALARMMASK_DATEWEEKDAY);
 	  Sleep_LightSleep();
 	  if (interruptButton == GPIO_PIN_8)
 	  {
 	      k++;
 	      k = k % 4;
+	  }
+	  else
+	  {
+	      struct data1StructHandle data1Struct = {DATA1_HEADER};
+	      readWeatherData(&weatherData);
+
+	      data1Struct.hum = weatherData.humidity;
+	      data1Struct.temp = weatherData.tempSHT;
+	      data1Struct.pres = weatherData.pressure;
+
+	      RF24_powerUp();
+	      communication_Setup();
+
+	      uint8_t rfBuffer[32];
+	      uint8_t syncOk = 0;
+	      uint8_t syncTimeout = 10;
+	      uint32_t time1 = HAL_GetTick();
+	      while (!syncOk && syncTimeout != 0)
+	      {
+	          if ((HAL_GetTick() - time1) > 1000)
+	          {
+	              time1 = HAL_GetTick();
+
+	              char temp[10];
+	              sprintf(temp, "SEND %d", syncTimeout--);
+	              glassLCD_Clear();
+	              glassLCD_WriteData(temp);
+	              glassLCD_Update();
+
+	              RF24_write(&data1Struct, sizeof(struct data1StructHandle), 0);
+	              if (RF24_isAckPayloadAvailable())
+	              {
+	                  syncOk = 1;
+	                  while (RF24_available(NULL))
+	                  {
+	                      RF24_read(rfBuffer, 32);
+	                  }
+	                  if (rfBuffer[0] == SYNC_HEADER)
+	                  {
+	                      memcpy(&syncStruct, rfBuffer, sizeof(syncStruct));
+	                      RTC_SetTime(syncStruct.myEpoch);
+	                      RTC_SetAlarmEpoch(syncStruct.sendEpoch, RTC_ALARMMASK_DATEWEEKDAY);
+	                      sendInterval = syncStruct.sendEpoch - syncStruct.myEpoch;
+	                      syncOk = 1;
+	                      char debugTemp[100];
+	                      sprintf(debugTemp, "Time: %ld Alarm: %ld RTC: %ld\r\n", syncStruct.myEpoch, syncStruct.sendEpoch, RTC_GetTime());
+	                      HAL_UART_Transmit(&huart2, debugTemp, strlen(debugTemp), 1000);
+	                  }
+	              }
+	          }
+	      }
+	      RF24_flush_rx();
+	      RF24_flush_tx();
+	      RF24_powerDown();
+	      if (syncOk == 0) RTC_SetAlarmEpoch(RTC_GetTime() + sendInterval, RTC_ALARMMASK_DATEWEEKDAY);
 	  }
     /* USER CODE END WHILE */
 
@@ -631,6 +696,13 @@ void writeError(uint8_t _e, uint8_t _forceSleep)
   glassLCD_Update();
   HAL_Delay(50);
   if (_forceSleep) HAL_PWR_EnterSTANDBYMode();
+}
+
+void readWeatherData(struct measruementHandle *_w)
+{
+    _w->humidity = SHT21_ReadHumidity() / 100.0;
+    _w->tempSHT = SHT21_ReadTemperature() / 100.0;
+    _w->pressure = BMP180_ReadPressure() / 10.0;
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
