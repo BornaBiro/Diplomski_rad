@@ -10,6 +10,6 @@
 #include "myStructs.h"
 
 void communication_Setup();
-uint8_t communication_Sync(struct syncStructHandle *_s);
-
+//uint8_t communication_Sync(struct syncStructHandle *_s);
+uint8_t communication_Transmit(void* _transmitBuffer, uint8_t _txSize, uint8_t* _receiveBuffer);
 #endif

@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #include "myStructs.h"
 #include "glassLCD.h"
@@ -83,11 +84,11 @@ TIM_HandleTypeDef htim6;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-struct syncStructHandle syncStruct = { SYNC_HEADER, 0, 300, 1800 };
+struct syncStructHandle syncStruct = {SYNC_HEADER};
 struct measruementHandle weatherData;
 struct measruementHandle currentWeatherData;
-const char lcdTest[] = { "88888888" };
-const char errStr[] = { "ERR-%03d" };
+const char lcdTest[] = {"88888888"};
+const char errStr[] = {"ERR-%03d"};
 const char* windStr[] = {"N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"};
 volatile uint32_t interruptButton = 0;
 volatile uint8_t alarmInterruptFlag = 0;
@@ -159,232 +160,262 @@ int main(void)
   MX_ADC_Init();
   MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
-    // Init LCD Driver
-    glassLCD_Begin();
+  // Init LCD Driver
+  glassLCD_Begin();
 
-    // Test LCD (and wait for debugger to connect)
-    glassLCD_WriteData((char*) lcdTest);
-    glassLCD_SetDot(0b11111111);
-    glassLCD_WriteArrow(0b11111111);
+  // Test LCD (and wait for debugger to connect)
+  glassLCD_WriteData((char*) lcdTest);
+  glassLCD_SetDot(0b11111111);
+  glassLCD_WriteArrow(0b11111111);
+  glassLCD_Update();
+  HAL_Delay(2000);
+
+  // Dummy ADC readings to calibrate ADC and remove ranks
+  getADC(ADC_CHANNEL_0);
+  getADC(ADC_CHANNEL_1);
+  getADC(ADC_CHANNEL_4);
+
+  // Init Pressure & Temp sensor
+  if (!BMP180_Init()) writeError(BMP180_ERROR, DEEP_SLEEP);
+
+  // Init Humidity & Temp sensor
+  if (!SHT21_Init()) writeError(SHT21_ERROR, DEEP_SLEEP);
+
+  // Init Si1147 Sensor for ALS and UV
+  if (!Si1147_Init()) writeError(SI1147_ERROR, DEEP_SLEEP);
+
+  RF24_init(NRF24_CE_GPIO_Port, NRF24_CE_Pin, NRF24_CSN_GPIO_Port, NRF24_CSN_Pin);
+  if (!RF24_begin()) writeError(NRF24_ERROR, DEEP_SLEEP);
+
+  // Enable UV meas.
+  Si1147_SetUV();
+
+  // Set time on RTC
+  RTC_SetTime(1609459200);
+
+  // Setup RF communication (speed, RF Channel, RF Power, rtc)
+  communication_Setup();
+
+  // Wait for sync signal from indoor station
+  uint8_t syncTimeout = 180;
+  uint8_t rxBuffer[32] = {0};
+  uint8_t syncSuccess = 0;
+  while (!syncSuccess && syncTimeout > 0)
+  {
+    if (communication_Transmit(&syncStruct, sizeof(syncStruct), rxBuffer))
+    {
+      if (rxBuffer[0] == SYNC_HEADER)
+      {
+        memcpy(&syncStruct, rxBuffer, sizeof(syncStruct));
+        syncSuccess = 1;
+      }
+    }
+    char lcdTemp[9];
+    sprintf(lcdTemp, "SYNC %3d", syncTimeout--);
+    //glassLCD_Clear();
+    glassLCD_WriteData(lcdTemp);
     glassLCD_Update();
-    HAL_Delay(2000);
+    HAL_Delay(1000);
+  }
+  // Flush all unsent data and power down the module
+  RF24_flush_rx();
+  RF24_flush_tx();
+  RF24_powerDown();
 
-    // Dummy ADC readings to calibrate ADC and remove ranks
-    getADC(ADC_CHANNEL_0);
-    getADC(ADC_CHANNEL_1);
-    getADC(ADC_CHANNEL_4);
+  if (syncSuccess)
+  {
+    struct tm hTime;
 
-    // Init Pressure & Temp sensor
-    if (!BMP180_Init()) writeError(BMP180_ERROR, DEEP_SLEEP);
+    RTC_SetTime(syncStruct.myEpoch);
+    RTC_SetAlarmEpoch(syncStruct.sendEpoch, RTC_ALARMMASK_DATEWEEKDAY);
+    sendInterval = syncStruct.sendEpoch - syncStruct.myEpoch;
+    firstTimeSync = 1;
 
-    // Init Humidity & Temp sensor
-    if (!SHT21_Init()) writeError(SHT21_ERROR, DEEP_SLEEP);
+    //glassLCD_Clear();
+    glassLCD_WriteData("SYNC OK");
+    glassLCD_Update();
+    HAL_Delay(1000);
 
-    // Init Si1147 Sensor for ALS and UV
-    if (!Si1147_Init()) writeError(SI1147_ERROR, DEEP_SLEEP);
+    hTime = RTC_EpochToHuman(syncStruct.myEpoch);
+    sprintf(lcdTemp, " %2d%02d%02d", hTime.tm_hour, hTime.tm_min, hTime.tm_sec);
+    //glassLCD_Clear();
+    glassLCD_WriteData(lcdTemp);
+    glassLCD_SetDot(0b00101000);
+    glassLCD_Update();
+    HAL_Delay(1000);
+  }
+  else
+  {
+    sendInterval = 600;
+    RTC_SetAlarmEpoch(RTC_GetTime() + sendInterval, RTC_ALARMMASK_DATEWEEKDAY);
+    //glassLCD_Clear();
+    glassLCD_WriteData("NO SYNC");
+    glassLCD_Update();
+    HAL_Delay(1000);
+  }
 
-    RF24_init(NRF24_CE_GPIO_Port, NRF24_CE_Pin, NRF24_CSN_GPIO_Port, NRF24_CSN_Pin);
-    if (!RF24_begin()) writeError(NRF24_ERROR, DEEP_SLEEP);
+  // Get North direction for wind direction calibration
+  for (int i = 0; i < 5; i++)
+  {
+    sprintf(lcdTemp, "D CAL %d", 5 - i);
+    //glassLCD_Clear();
+    glassLCD_WriteData(lcdTemp);
+    glassLCD_Update();
+    windDirCalibration += getWindDir(ADC_CHANNEL_1, 0);
+    HAL_Delay(1000);
+  }
+  windDirCalibration /= 5;
+  readWeatherData(&currentWeatherData, ALL_MEASUREMENTS);
 
-    // Enable UV meas.
-    Si1147_SetUV();
-
-    // Set time on RTC
-    RTC_SetTime(1609459200);
-
-    // Setup RF communication (speed, RF Channel, RF Power, rtc)
-    communication_Setup();
-
-    // Wait for sync signal from indoor station
-    if (communication_Sync(&syncStruct))
-    {
-        struct tm hTime;
-
-        RTC_SetTime(syncStruct.myEpoch);
-        RTC_SetAlarmEpoch(syncStruct.sendEpoch, RTC_ALARMMASK_DATEWEEKDAY);
-        sendInterval = syncStruct.sendEpoch - syncStruct.myEpoch;
-        firstTimeSync = 1;
-
-        glassLCD_Clear();
-        glassLCD_WriteData("SYNC OK");
-        glassLCD_Update();
-        HAL_Delay(1000);
-
-        hTime = RTC_EpochToHuman(syncStruct.myEpoch);
-        sprintf(lcdTemp, " %2d%02d%02d",  hTime.tm_hour, hTime.tm_min, hTime.tm_sec);
-        glassLCD_Clear();
-        glassLCD_WriteData(lcdTemp);
-        glassLCD_SetDot(0b00101000);
-        glassLCD_Update();
-        HAL_Delay(1000);
-    }
-    else
-    {
-        sendInterval = 600;
-        RTC_SetAlarmEpoch(RTC_GetTime() + sendInterval, RTC_ALARMMASK_DATEWEEKDAY);
-        glassLCD_Clear();
-        glassLCD_WriteData("NO SYNC");
-        glassLCD_Update();
-        HAL_Delay(1000);
-    }
-
-    // Get North direction for wind direction calibration
-    for (int i = 0; i < 5; i++)
-    {
-        sprintf(lcdTemp, "D CAL %d",  5 - i);
-        glassLCD_Clear();
-        glassLCD_WriteData(lcdTemp);
-        glassLCD_Update();
-        windDirCalibration += getWindDir(ADC_CHANNEL_1, 0);
-        HAL_Delay(1000);
-    }
-    windDirCalibration /= 5;
-
-    readWeatherData(&currentWeatherData, ALL_MEASUREMENTS);
-    RF24_flush_rx();
-    RF24_flush_tx();
-    RF24_powerDown();
   /* USER CODE END 2 */
  
  
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-    uint8_t k = 0;
-    while (1)
+  uint8_t k = 0;
+  while (1)
+  {
+    uint8_t lcdDot = 0;
+    uint8_t lcdArrow = 0;
+    if (k == 0)
     {
-        uint8_t lcdDot = 0;
-        uint8_t lcdArrow = 0;
-        if (k == 0)
-        {
-            int16_t t = currentWeatherData.tempSHT * 10;
-            int16_t h = currentWeatherData.humidity * 10;
-            sprintf(lcdTemp, "%3d%01d %2d%01d", t / 10, abs(t % 10), h / 10, abs(h % 10));
-            lcdDot = 0b00100010;
-            lcdArrow = 0b10000000;
-        }
-        if (k == 1)
-        {
-            uint16_t p = currentWeatherData.pressure * 10;
-            sprintf(lcdTemp, "%4d%1d", p / 10, abs(p % 10));
-            lcdDot = 0b00010000;
-            lcdArrow = 0b01000000;
-        }
-        if (k == 2)
-        {
-            int16_t uv = currentWeatherData.uv;
-            int16_t vis = currentWeatherData.light;
-            sprintf(lcdTemp, "%03d %4d", uv, vis);
-            lcdDot = 0b01000000;
-            lcdArrow = 0b00100000;
-        }
-        if (k == 3)
-        {
-            double energy = currentWeatherData.solarW;
-            double energyJ = currentWeatherData.solarJ;
-            sprintf(lcdTemp, "%2d%1d %4d", (int) (energyJ), (int) (energyJ * 10) % 10, (int) (energy));
-            lcdDot = 0b01000000;
-            lcdArrow = 0b00010000;
-        }
-        if (k == 4)
-        {
-            sprintf(lcdTemp, "%3d", (int)currentWeatherData.windSpeed);
-            lcdArrow = 0b00001000;
-        }
-        if (k == 5)
-        {
-            sprintf(lcdTemp, "%3s %3d", windStr[(int)((currentWeatherData.windDir / 22.5) + 0.5) % 16], currentWeatherData.windDir);
-            lcdArrow = 0b00000100;
-        }
-        if (k == 6)
-        {
-            uint16_t batt = (currentWeatherData.battery) * 100;
-            struct tm t = RTC_EpochToHuman(RTC_GetTime());
-            sprintf(lcdTemp, "%2d%02d %1d%02d", t.tm_hour, t.tm_min, batt / 100, batt % 100);
-            lcdArrow = 0b00000010;
-            lcdDot = 0b01000100;
-        }
-        glassLCD_Clear();
-        glassLCD_WriteData(lcdTemp);
-        glassLCD_SetDot(lcdDot);
-        glassLCD_WriteArrow(lcdArrow);
-        glassLCD_Update();
-        Sleep_LightSleep();
+      int16_t t = round(currentWeatherData.tempSHT * 10);
+      int16_t h = round(currentWeatherData.humidity * 10);
+      sprintf(lcdTemp, "%3d%01d %2d%01d", t / 10, abs(t % 10), h / 10, abs(h % 10));
+      lcdDot = 0b00100010;
+      lcdArrow = 0b10000000;
+    }
+    if (k == 1)
+    {
+      uint16_t p = round(currentWeatherData.pressure * 10);
+      sprintf(lcdTemp, "%4d%1d", p / 10, abs(p % 10));
+      lcdDot = 0b00010000;
+      lcdArrow = 0b01000000;
+    }
+    if (k == 2)
+    {
+      int16_t uv = currentWeatherData.uv;
+      int16_t vis = currentWeatherData.light;
+      sprintf(lcdTemp, "%03d %4d", uv, vis);
+      lcdDot = 0b01000000;
+      lcdArrow = 0b00100000;
+    }
+    if (k == 3)
+    {
+      double energy = round(currentWeatherData.solarW);
+      double energyJ = round(currentWeatherData.solarJ);
+      sprintf(lcdTemp, "%2d%1d %4d", (int) (energyJ), (int) (energyJ * 10) % 10, (int) (energy));
+      lcdDot = 0b01000000;
+      lcdArrow = 0b00010000;
+    }
+    if (k == 4)
+    {
+      int wind = round(currentWeatherData.windSpeed * 10);
+      sprintf(lcdTemp, "%3d%1d", wind / 10, abs(wind % 10));
+      lcdDot = 0b00100000;
+      lcdArrow = 0b00001000;
+    }
+    if (k == 5)
+    {
+      sprintf(lcdTemp, "%3s %3d", windStr[(int) ((currentWeatherData.windDir / 22.5) + 0.5) % 16], currentWeatherData.windDir);
+      lcdArrow = 0b00000100;
+    }
+    if (k == 6)
+    {
+      uint16_t batt = round((currentWeatherData.battery) * 100);
+      struct tm t = RTC_EpochToHuman(RTC_GetTime());
+      sprintf(lcdTemp, "%2d%02d %1d%02d", t.tm_hour, t.tm_min, batt / 100, abs(batt % 100));
+      lcdArrow = 0b00000010;
+      lcdDot = 0b01000100;
+    }
+    //glassLCD_Clear();
+    glassLCD_WriteData(lcdTemp);
+    glassLCD_SetDot(lcdDot);
+    glassLCD_WriteArrow(lcdArrow);
+    glassLCD_Update();
+    Sleep_LightSleep();
 
-        if (alarmInterruptFlag == 1)
+    if (alarmInterruptFlag == 1)
+    {
+      alarmInterruptFlag = 0;
+      readWeatherData(&weatherData, ALL_MEASUREMENTS);
+      currentWeatherData = weatherData;
+      uint8_t dataSent = 0;
+
+      if (firstTimeSync)
+      {
+        RF24_powerUp();
+        communication_Setup();
+        uint8_t rxBuffer[32] = {0};
+        uint8_t sendTimeout = 25;
+        struct data1StructHandle data1 = {DATA1_HEADER};
+        struct data2StructHandle data2 = {DATA2_HEADER};
+        void* dataStructList[2] = {&data1, &data2};
+        size_t dataStructListSize[2] = {sizeof(data1), sizeof(data2)};
+        data1.uv = weatherData.uv;
+        data1.windDir = weatherData.windDir;
+        data1.tempSHT = weatherData.tempSHT;
+        data1.tempSoil = weatherData.tempSoil;
+        data1.humidity = weatherData.humidity;
+        data1.pressure = weatherData.pressure;
+        data1.light = weatherData.light;
+        data1.windSpeed = weatherData.windSpeed;
+        data2.rain = weatherData.rain;
+        data2.battery = weatherData.battery;
+        data2.epoch = weatherData.epoch;
+        data2.solarJ = weatherData.solarJ;
+        data2.solarW = weatherData.solarW;
+        while (dataSent < 2 && sendTimeout > 0)
         {
-            alarmInterruptFlag = 0;
-            struct data1StructHandle data1Struct = { DATA1_HEADER };
-            readWeatherData(&weatherData, ALL_MEASUREMENTS);
-            currentWeatherData = weatherData;
-
-            data1Struct.hum = weatherData.humidity;
-            data1Struct.temp = weatherData.tempSHT;
-            data1Struct.pres = weatherData.pressure;
-
-            RF24_powerUp();
-            communication_Setup();
-
-            uint8_t rfBuffer[32];
-            uint8_t syncOk = 0;
-            uint8_t syncTimeout = 25;
-            uint32_t time1 = HAL_GetTick();
-            if (firstTimeSync)
+          if (communication_Transmit(dataStructList[dataSent], dataStructListSize[dataSent], rxBuffer))
+          {
+            if (rxBuffer[0] == SYNC_HEADER)
             {
-                while (!syncOk && syncTimeout != 0)
-                {
-                    if ((HAL_GetTick() - time1) > 1000)
-                    {
-                        time1 = HAL_GetTick();
-
-                        char temp[10];
-                        sprintf(temp, "SEND %d", syncTimeout--);
-                        glassLCD_Clear();
-                        glassLCD_WriteData(temp);
-                        glassLCD_Update();
-
-                        RF24_write(&data1Struct, sizeof(struct data1StructHandle), 0);
-                        if (RF24_isAckPayloadAvailable())
-                        {
-                            while (RF24_available(NULL))
-                            {
-                                RF24_read(rfBuffer, 32);
-                            }
-                            if (rfBuffer[0] == SYNC_HEADER)
-                            {
-                                syncOk = 1;
-                                memcpy(&syncStruct, rfBuffer, sizeof(syncStruct));
-                                RTC_SetTime(syncStruct.myEpoch);
-                                RTC_SetAlarmEpoch(syncStruct.sendEpoch, RTC_ALARMMASK_DATEWEEKDAY);
-                                sendInterval = syncStruct.sendEpoch - syncStruct.myEpoch;
-                                syncOk = 1;
-                            }
-                        }
-                    }
-                }
-                RF24_flush_rx();
-                RF24_flush_tx();
-                RF24_powerDown();
+              dataSent++;
+              memcpy(&syncStruct, rxBuffer, sizeof(syncStruct));
             }
-            if (syncOk == 0) RTC_SetAlarmEpoch(RTC_GetTime() + sendInterval - 25, RTC_ALARMMASK_DATEWEEKDAY);
+          }
+          char temp[10];
+          sprintf(temp, "SEND %d", sendTimeout--);
+          //glassLCD_Clear();
+          glassLCD_WriteData(temp);
+          glassLCD_Update();
+          HAL_Delay(1000);
         }
+        RF24_flush_rx();
+        RF24_flush_tx();
+        RF24_powerDown();
+      }
+      if (dataSent == 0)
+      {
+        RTC_SetAlarmEpoch(RTC_GetTime() + sendInterval - 25,
+            RTC_ALARMMASK_DATEWEEKDAY);
+      }
+      else
+      {
+        RTC_SetTime(syncStruct.myEpoch);
+        RTC_SetAlarmEpoch(syncStruct.sendEpoch, RTC_ALARMMASK_DATEWEEKDAY);
+        sendInterval = syncStruct.sendEpoch - syncStruct.myEpoch;
+      }
+    }
 
-        if (interruptButton & GPIO_PIN_8)
-        {
-            interruptButton &= ~(GPIO_PIN_8);
-            k++;
-            k = k % 7;
-        }
+    if (interruptButton & GPIO_PIN_8)
+    {
+      interruptButton &= ~(GPIO_PIN_8);
+      k++;
+      k = k % 7;
+    }
 
-        if (interruptButton & GPIO_PIN_1)
-        {
-            interruptButton &= ~(GPIO_PIN_1);
-            readWeatherData(&currentWeatherData, measurementTable[k]);
-        }
+    if (interruptButton & GPIO_PIN_1)
+    {
+      interruptButton &= ~(GPIO_PIN_1);
+      readWeatherData(&currentWeatherData, measurementTable[k]);
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    }
+  }
   /* USER CODE END 3 */
 }
 
@@ -831,7 +862,7 @@ void writeError(uint8_t _e, uint8_t _forceSleep)
 {
   char _c[9];
   sprintf(_c, errStr, _e);
-  glassLCD_Clear();
+  //glassLCD_Clear();
   glassLCD_WriteData(_c);
   glassLCD_Update();
   HAL_Delay(50);
@@ -840,173 +871,172 @@ void writeError(uint8_t _e, uint8_t _forceSleep)
 
 void readWeatherData(struct measruementHandle *_w, uint16_t _flags)
 {
-    if (_flags & TEMP_MEASUREMENT)_w->tempSHT = SHT21_ReadTemperature();
-    if (_flags & HUMIDITY_MEASUREMENT) _w->humidity = SHT21_ReadHumidity();
-    if (_flags & PRESSURE_MEASUREMENT)
+  if (_flags & TEMP_MEASUREMENT) _w->tempSHT = SHT21_ReadTemperature();
+  if (_flags & HUMIDITY_MEASUREMENT) _w->humidity = SHT21_ReadHumidity();
+  if (_flags & PRESSURE_MEASUREMENT)
+  {
+    _w->pressure = 0;
+    for (int i = 0; i < 4; i++)
     {
-        _w->pressure = 0;
-        for (int i = 0; i < 4; i++)
-        {
-            _w->pressure += BMP180_ReadPressure();
-        }
-        _w->pressure /= 4;
+      _w->pressure += BMP180_ReadPressure();
     }
-    if (_flags & SOLAR_MEASUREMENT) getSolarData(&(_w->solarJ), &(_w->solarW));
-    if (_flags & UV_MEASUREMENT)
-    {
-        Si1147_ForceUV();
-        _w->uv = Si1147_GetUV();
-    }
-    if (_flags & UV_MEASUREMENT)
-    {
-        // Force the measurement of UV but it also measures visible light
-        Si1147_ForceUV();
-        _w->light = Si1147_GetVis() * 0.282 * 16.5;
-    }
-    if (_flags & WINDSPEED_MEASUREMENT) _w->windSpeed = getWindSpeed();
-    if (_flags & WINDDIR_MEASUREMENT) _w->windDir = getWindDir(ADC_CHANNEL_1, windDirCalibration);
-    if (_flags & BATTERY_MEASUREMENT) _w->battery = getBatteryVoltage();
+    _w->pressure /= 4;
+  }
+  if (_flags & SOLAR_MEASUREMENT) getSolarData(&(_w->solarJ), &(_w->solarW));
+  if (_flags & UV_MEASUREMENT)
+  {
+    Si1147_ForceUV();
+    _w->uv = Si1147_GetUV();
+  }
+  if (_flags & UV_MEASUREMENT)
+  {
+    // Force the measurement of UV but it also measures visible light
+    Si1147_ForceUV();
+    _w->light = Si1147_GetVis() * 0.282 * 16.5;
+  }
+  if (_flags & WINDSPEED_MEASUREMENT) _w->windSpeed = getWindSpeed();
+  if (_flags & WINDDIR_MEASUREMENT) _w->windDir = getWindDir(ADC_CHANNEL_1, windDirCalibration);
+  if (_flags & BATTERY_MEASUREMENT) _w->battery = getBatteryVoltage();
 }
 
 // Read solar data in Joules/cm2 and W/m2
 void getSolarData(double *_energyJ, double *_energy)
 {
-    // Turn on supply to the OpAmp
-    HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_SET);
-    HAL_Delay(10);
+  // Turn on supply to the OpAmp
+  HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_SET);
+  HAL_Delay(10);
 
-    uint32_t rawAdc;
-    double voltage;
-    double current;
+  uint32_t rawAdc;
+  double voltage;
+  double current;
 
-    // Get the measurement for  the solar cell
-    rawAdc = getADC(ADC_CHANNEL_0);
+  // Get the measurement for  the solar cell
+  rawAdc = getADC(ADC_CHANNEL_0);
 
-    // Turn off supply to the OpAmp
-    HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_RESET);
+  // Turn off supply to the OpAmp
+  HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_RESET);
 
-    // Calculations for voltage, current and energy
-    voltage = (rawAdc / 4095.0 * 3.3) - 0.004;
+  // Calculations for voltage, current and energy
+  voltage = (rawAdc / 4095.0 * 3.3) - 0.004;
 
-    if (voltage < 0) voltage = 0;
+  if (voltage < 0) voltage = 0;
 
-    current = voltage / (220 / 4.7);
-    *_energy = current / 45E-3 * 1000;
-    *_energyJ = (1 / 1E4) * (*_energy) * 600;
+  current = voltage / (220 / 4.7);
+  *_energy = current / 45E-3 * 1000;
+  *_energyJ = (1 / 1E4) * (*_energy) * 600;
 }
 
 uint32_t getADC(uint32_t _ch)
 {
-    uint32_t _result;
-    ADC_ChannelConfTypeDef ch = {0};
+  uint32_t _result;
+  ADC_ChannelConfTypeDef ch = {0};
 
-    // Calibrate ADC
-    HAL_ADCEx_Calibration_Start(&hadc, ADC_SINGLE_ENDED);
+  // Calibrate ADC
+  HAL_ADCEx_Calibration_Start(&hadc, ADC_SINGLE_ENDED);
 
-    // Select the channel (in order to work properly, on all channels ranks have to be set on RANK_NONE!)
-    ch.Channel = _ch;
-    ch.Rank = ADC_RANK_CHANNEL_NUMBER;
-    HAL_ADC_ConfigChannel(&hadc, &ch);
+  // Select the channel (in order to work properly, on all channels ranks have to be set on RANK_NONE!)
+  ch.Channel = _ch;
+  ch.Rank = ADC_RANK_CHANNEL_NUMBER;
+  HAL_ADC_ConfigChannel(&hadc, &ch);
 
-    // Start ADC conversion of selected channel
-    HAL_ADC_Start(&hadc);
+  // Start ADC conversion of selected channel
+  HAL_ADC_Start(&hadc);
 
-    // Wait for conversion to be complete
-    HAL_ADC_PollForConversion(&hadc, 1000);
+  // Wait for conversion to be complete
+  HAL_ADC_PollForConversion(&hadc, 1000);
 
-    // Get the RAW ADC value
-    _result = HAL_ADC_GetValue(&hadc);
+  // Get the RAW ADC value
+  _result = HAL_ADC_GetValue(&hadc);
 
-    // Stop the ADC
-    HAL_ADC_Stop(&hadc);
+  // Stop the ADC
+  HAL_ADC_Stop(&hadc);
 
-    // Remove channel from rank
-    ch.Rank = ADC_RANK_NONE;
-    HAL_ADC_ConfigChannel(&hadc, &ch);
+  // Remove channel from rank
+  ch.Rank = ADC_RANK_NONE;
+  HAL_ADC_ConfigChannel(&hadc, &ch);
 
-    // Return the result
-    return _result;
+  // Return the result
+  return _result;
 }
 
 float getWindSpeed()
 {
-    // Turn on supply to the wind speed sensor
-    HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_SET);
-    HAL_Delay(5);
+  // Turn on supply to the wind speed sensor
+  HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_SET);
+  HAL_Delay(5);
 
-    // Activate the timer
-    HAL_TIM_Base_Start(&htim6);
+  // Activate the timer
+  HAL_TIM_Base_Start(&htim6);
 
-    // Get inital state of the pin
-    uint8_t _initState = HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin);
+  // Get inital state of the pin
+  uint8_t _initState = HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin);
 
-    // Get the current sysTick time (needed for timeout)
-    uint32_t _timeout = HAL_GetTick();
-    uint32_t _period = 0;
+  // Get the current sysTick time (needed for timeout)
+  uint32_t _timeout = HAL_GetTick();
+  uint32_t _period = 0;
 
-    // Wait for the edge of the signal (doesn't matter if is rising or falling)
-    while((HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin) == _initState) && ((HAL_GetTick() - _timeout) < 1000));
-    if ((HAL_GetTick() - _timeout) >= 1000) return 0;
+  // Wait for the edge of the signal (doesn't matter if is rising or falling)
+  while ((HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin) == _initState) && ((HAL_GetTick() - _timeout) < 1000));
+  if ((HAL_GetTick() - _timeout) >= 1000) return 0;
 
-    // Reset the timer counter and measure the time until next edge of the signal
-    htim6.Instance->CNT = 0;
-    while((HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin) != _initState) && (htim6.Instance->CNT < 65530));
-    _period += (htim6.Instance->CNT);
+  // Reset the timer counter and measure the time until next edge of the signal
+  htim6.Instance->CNT = 0;
+  while ((HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin) != _initState) && (htim6.Instance->CNT < 65530));
+  _period += (htim6.Instance->CNT);
 
-    // Reset the timer counter and measure the time until next edge of the signal
-    htim6.Instance->CNT = 0;
-    while((HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin) == _initState) && (htim6.Instance->CNT < 65530));
-    _period += (htim6.Instance->CNT);
+  // Reset the timer counter and measure the time until next edge of the signal
+  htim6.Instance->CNT = 0;
+  while ((HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin) == _initState)&& (htim6.Instance->CNT < 65530));
+  _period += (htim6.Instance->CNT);
 
-    // Calculate the frequency in hertz
-    _period = 1 / (_period * 1E-6 * 15.25);
+  // Stop the timer
+  HAL_TIM_Base_Stop(&htim6);
 
-    // Stop the timer and return the result
-    HAL_TIM_Base_Stop(&htim6);
+  // Turn on supply to the wind speed sensor
+  HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_RESET);
 
-    // Turn on supply to the wind speed sensor
-    HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_RESET);
-
-    return _period;
+  // Calculate the frequency in hertz and return the result
+  return (float)(1 / (_period * 1E-6 * 15.25));
 }
 
 int16_t getWindDir(uint32_t _pin, int16_t _offset)
 {
-    // Turn on the supply to the wind direction sensor (AS5600)
-    HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_SET);
-    HAL_Delay(10);
+  // Turn on the supply to the wind direction sensor (AS5600)
+  HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_SET);
+  HAL_Delay(10);
 
-    int16_t _voltage = getADC(_pin);
-    int16_t _angle;
-    _voltage = 1 / 4095.0 * _voltage * 3300;
-    _angle = (int16_t)((360.0 / 3300.0) * _voltage);
-    _angle = _angle - _offset;
-    if (_angle < 0) _angle = 360 + _angle;
+  int16_t _voltage = getADC(_pin);
+  int16_t _angle;
+  _voltage = 1 / 4095.0 * _voltage * 3300;
+  _angle = (int16_t) ((360.0 / 3300.0) * _voltage);
+  _angle = _angle - _offset;
+  if (_angle < 0)
+    _angle = 360 + _angle;
 
-    // Turn off the supply to the wind direction sensor (AS5600)
-    HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_RESET);
+  // Turn off the supply to the wind direction sensor (AS5600)
+  HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_RESET);
 
-    return _angle;
+  return _angle;
 }
 
 float getBatteryVoltage()
 {
-    float _result;
-    HAL_GPIO_WritePin(BAT_M_EN_GPIO_Port, BAT_M_EN_Pin, GPIO_PIN_SET);
-    HAL_Delay(10);
-    _result = getADC(ADC_CHANNEL_4) * 1 / 4095.0 * 3.3 * 2;
-    HAL_GPIO_WritePin(BAT_M_EN_GPIO_Port, BAT_M_EN_Pin, GPIO_PIN_RESET);
-    return _result;
+  float _result;
+  HAL_GPIO_WritePin(BAT_M_EN_GPIO_Port, BAT_M_EN_Pin, GPIO_PIN_SET);
+  HAL_Delay(10);
+  _result = getADC(ADC_CHANNEL_4) * 1 / 4095.0 * 3.3 * 2;
+  HAL_GPIO_WritePin(BAT_M_EN_GPIO_Port, BAT_M_EN_Pin, GPIO_PIN_RESET);
+  return _result;
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    interruptButton |= GPIO_Pin;
+  interruptButton |= GPIO_Pin;
 }
 
 void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 {
-    alarmInterruptFlag = 1;
+  alarmInterruptFlag = 1;
 }
 /* USER CODE END 4 */
 
@@ -1017,7 +1047,7 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-    /* User can add his own implementation to report the HAL error return state */
+  /* User can add his own implementation to report the HAL error return state */
 
   /* USER CODE END Error_Handler_Debug */
 }
@@ -1033,8 +1063,8 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 { 
   /* USER CODE BEGIN 6 */
-    /* User can add his own implementation to report the file name and line number,
-     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* User can add his own implementation to report the file name and line number,
+   tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

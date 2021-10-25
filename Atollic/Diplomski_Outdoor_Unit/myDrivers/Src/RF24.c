@@ -90,7 +90,7 @@ void RF24_write_registers(uint8_t reg, const uint8_t* buf, uint8_t len)
     //while (len--) {
     //    _SPI->transfer(*buf++);
     //}
-    HAL_SPI_Transmit(&hspi1, buf, len, 1000);
+    HAL_SPI_Transmit(&hspi1, (uint8_t*)buf, len, 1000);
     RF24_endTransaction();
 }
 
@@ -135,11 +135,11 @@ void RF24_write_payload(const void* buf, uint8_t data_len, const uint8_t writeTy
 
     RF24_beginTransaction();
     //status = _SPI->transfer(writeType);
-    HAL_SPI_TransmitReceive(&hspi1, &writeType, &status, sizeof(uint8_t), 1000);
+    HAL_SPI_TransmitReceive(&hspi1, (uint8_t*)&writeType, &status, sizeof(uint8_t), 1000);
     //while (data_len--) {
     //    _SPI->transfer(*current++);
     //}
-    HAL_SPI_Transmit(&hspi1, current, data_len, 1000);
+    HAL_SPI_Transmit(&hspi1, (uint8_t*)current, data_len, 1000);
     //while (blank_len--) {
     //    _SPI->transfer(0);
     //}

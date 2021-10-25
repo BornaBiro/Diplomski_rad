@@ -14,6 +14,9 @@ void glassLCD_Begin()
 
 void glassLCD_WriteData(char* s)
 {
+  // Clear everything
+  glassLCD_Clear();
+
 	// Get the size of string
 	uint8_t _n = strlen(s);
 
