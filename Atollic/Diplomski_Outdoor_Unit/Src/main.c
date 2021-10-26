@@ -303,9 +303,8 @@ int main(void)
     }
     if (k == 3)
     {
-      double energy = round(currentWeatherData.solarW);
-      double energyJ = round(currentWeatherData.solarJ);
-      sprintf(lcdTemp, "%2d%1d %4d", (int) (energyJ), (int) (energyJ * 10) % 10, (int) (energy));
+      int energyJ = round(currentWeatherData.solarJ * 10);
+      sprintf(lcdTemp, "%2d%1d %4d", energyJ / 10, abs(energyJ % 10), (int) (currentWeatherData.solarW));
       lcdDot = 0b01000000;
       lcdArrow = 0b00010000;
     }
