@@ -282,36 +282,36 @@ int main(void)
     {
       int16_t t = round(currentWeatherData.tempSHT * 10);
       int16_t h = round(currentWeatherData.humidity * 10);
-      sprintf(lcdTemp, "%3d%01d %2d%01d", t / 10, abs(t % 10), h / 10, abs(h % 10));
+      sprintf(lcdTemp, "%3d%01d %2d%01d", t / 10, abs(t % 10), abs(h / 10), abs(h % 10));
       lcdDot = 0b00100010;
       lcdArrow = 0b10000000;
     }
     if (k == 1)
     {
       uint16_t p = round(currentWeatherData.pressure * 10);
-      sprintf(lcdTemp, "%4d%1d", p / 10, abs(p % 10));
+      sprintf(lcdTemp, "%4d%1d", abs(p / 10), abs(p % 10));
       lcdDot = 0b00010000;
       lcdArrow = 0b01000000;
     }
     if (k == 2)
     {
-      int16_t uv = currentWeatherData.uv;
+      int16_t uv = (currentWeatherData.uv * 10);
       int16_t vis = currentWeatherData.light;
-      sprintf(lcdTemp, "%03d %4d", uv, vis);
+      sprintf(lcdTemp, "%2d%1d %4d", abs(uv / 10), abs(uv % 10), vis);
       lcdDot = 0b01000000;
       lcdArrow = 0b00100000;
     }
     if (k == 3)
     {
       int energyJ = round(currentWeatherData.solarJ * 10);
-      sprintf(lcdTemp, "%2d%1d %4d", energyJ / 10, abs(energyJ % 10), (int) (currentWeatherData.solarW));
+      sprintf(lcdTemp, "%2d%1d %4d", abs(energyJ / 10), abs(energyJ % 10), (int) (currentWeatherData.solarW));
       lcdDot = 0b01000000;
       lcdArrow = 0b00010000;
     }
     if (k == 4)
     {
       int wind = round(currentWeatherData.windSpeed * 10);
-      sprintf(lcdTemp, "%3d%1d", wind / 10, abs(wind % 10));
+      sprintf(lcdTemp, "%3d%1d", abs(wind / 10), abs(wind % 10));
       lcdDot = 0b00100000;
       lcdArrow = 0b00001000;
     }
@@ -352,7 +352,7 @@ int main(void)
         struct data2StructHandle data2 = {DATA2_HEADER};
         void* dataStructList[2] = {&data1, &data2};
         size_t dataStructListSize[2] = {sizeof(data1), sizeof(data2)};
-        data1.uv = weatherData.uv;
+        data1.uv = weatherData.uv * 100;
         data1.windDir = weatherData.windDir;
         data1.tempSHT = weatherData.tempSHT;
         data1.tempSoil = weatherData.tempSoil;
@@ -896,6 +896,7 @@ void readWeatherData(struct measruementHandle *_w, uint16_t _flags)
   if (_flags & WINDSPEED_MEASUREMENT) _w->windSpeed = getWindSpeed();
   if (_flags & WINDDIR_MEASUREMENT) _w->windDir = getWindDir(ADC_CHANNEL_1, windDirCalibration);
   if (_flags & BATTERY_MEASUREMENT) _w->battery = getBatteryVoltage();
+  _w->epoch = (uint32_t)RTC_GetTime();
 }
 
 // Read solar data in Joules/cm2 and W/m2

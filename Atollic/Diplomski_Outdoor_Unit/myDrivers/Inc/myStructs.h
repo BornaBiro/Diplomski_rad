@@ -11,7 +11,7 @@ struct syncStructHandle
 
 struct measruementHandle
 {
-    uint16_t uv;
+    float uv;
     int16_t windDir;
     float tempSHT;
     float tempSoil;
