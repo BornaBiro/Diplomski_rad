@@ -996,7 +996,7 @@ float getWindSpeed()
   HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_RESET);
 
   // Calculate the frequency in hertz and return the result
-  return (float)(1 / (_period * 1E-6 * 15.25));
+  return ((float)(1 / (_period * 1E-6 * 15.25))) / 9.14;
 }
 
 int16_t getWindDir(uint32_t _pin, int16_t _offset)
