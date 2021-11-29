@@ -1,0 +1,2 @@
+Arrow holder: 15% Infill, 4 perimeters, 0,45mm extrusion width
+Wing: 15% Infill, 4 perimeters, 0,45mm extrusion width

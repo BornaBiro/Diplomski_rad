@@ -1,1 +1,0 @@
-This is heavily modified RF24 library from https://github.com/nRF24/RF24 in order to work with STM32 Platform based on STM32CubeMX and Atollic.
