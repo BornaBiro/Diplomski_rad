@@ -212,7 +212,6 @@ int main(void)
     }
     char lcdTemp[9];
     sprintf(lcdTemp, "SYNC %3d", syncTimeout--);
-    //glassLCD_Clear();
     glassLCD_WriteData(lcdTemp);
     glassLCD_Update();
     HAL_Delay(1000);
@@ -231,14 +230,12 @@ int main(void)
     sendInterval = syncStruct.sendEpoch - syncStruct.myEpoch;
     firstTimeSync = 1;
 
-    //glassLCD_Clear();
     glassLCD_WriteData("SYNC OK");
     glassLCD_Update();
     HAL_Delay(1000);
 
     hTime = RTC_EpochToHuman(syncStruct.myEpoch);
     sprintf(lcdTemp, " %2d%02d%02d", hTime.tm_hour, hTime.tm_min, hTime.tm_sec);
-    //glassLCD_Clear();
     glassLCD_WriteData(lcdTemp);
     glassLCD_SetDot(0b00101000);
     glassLCD_Update();
@@ -248,7 +245,6 @@ int main(void)
   {
     sendInterval = 600;
     RTC_SetAlarmEpoch(RTC_GetTime() + sendInterval, RTC_ALARMMASK_DATEWEEKDAY);
-    //glassLCD_Clear();
     glassLCD_WriteData("NO SYNC");
     glassLCD_Update();
     HAL_Delay(1000);
@@ -258,7 +254,6 @@ int main(void)
   for (int i = 0; i < 5; i++)
   {
     sprintf(lcdTemp, "D CAL %d", 5 - i);
-    //glassLCD_Clear();
     glassLCD_WriteData(lcdTemp);
     glassLCD_Update();
     windDirCalibration += getWindDir(ADC_CHANNEL_1, 0);
@@ -281,9 +276,9 @@ int main(void)
     if (k == 0)
     {
       int16_t t = round(currentWeatherData.tempSHT * 10);
-      int16_t h = round(currentWeatherData.humidity * 10);
+      int16_t h = round(currentWeatherData.humidity * ((currentWeatherData.humidity >= 100) ? 1 : 10));
       sprintf(lcdTemp, "%3d%01d %2d%01d", t / 10, abs(t % 10), abs(h / 10), abs(h % 10));
-      lcdDot = 0b00100010;
+      lcdDot = (currentWeatherData.humidity >= 100) ? 0b00100000 : 0b00100010;
       lcdArrow = 0b10000000;
     }
     if (k == 1)
@@ -328,7 +323,6 @@ int main(void)
       lcdArrow = 0b00000010;
       lcdDot = 0b01000100;
     }
-    //glassLCD_Clear();
     glassLCD_WriteData(lcdTemp);
     glassLCD_SetDot(lcdDot);
     glassLCD_WriteArrow(lcdArrow);
@@ -377,7 +371,6 @@ int main(void)
           }
           char temp[10];
           sprintf(temp, "SEND %d", sendTimeout--);
-          //glassLCD_Clear();
           glassLCD_WriteData(temp);
           glassLCD_Update();
           HAL_Delay(1000);
@@ -861,7 +854,6 @@ void writeError(uint8_t _e, uint8_t _forceSleep)
 {
   char _c[9];
   sprintf(_c, errStr, _e);
-  //glassLCD_Clear();
   glassLCD_WriteData(_c);
   glassLCD_Update();
   HAL_Delay(50);
@@ -871,7 +863,11 @@ void writeError(uint8_t _e, uint8_t _forceSleep)
 void readWeatherData(struct measruementHandle *_w, uint16_t _flags)
 {
   if (_flags & TEMP_MEASUREMENT) _w->tempSHT = SHT21_ReadTemperature();
-  if (_flags & HUMIDITY_MEASUREMENT) _w->humidity = SHT21_ReadHumidity();
+  if (_flags & HUMIDITY_MEASUREMENT)
+  {
+	  _w->humidity = SHT21_ReadHumidity();
+	  if (_w->humidity > 100) _w->humidity = 100;
+  }
   if (_flags & PRESSURE_MEASUREMENT)
   {
     _w->pressure = 0;
@@ -922,7 +918,7 @@ void getSolarData(double *_energyJ, double *_energy)
   if (voltage < 0) voltage = 0;
 
   current = voltage / (220 / 4.7);
-  *_energy = current / 45E-3 * 1000;
+  *_energy = current / 40E-3 * 1000;
   *_energyJ = (1 / 1E4) * (*_energy) * 600;
 }
 
