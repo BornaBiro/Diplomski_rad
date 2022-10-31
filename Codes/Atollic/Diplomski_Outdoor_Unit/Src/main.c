@@ -957,6 +957,11 @@ uint32_t getADC(uint32_t _ch)
 
 float getWindSpeed()
 {
+  // Coefficients for power regression (https://keisan.casio.com/exec/system/14059931777261)
+  // Calculation for frequency to wind speed  y = A * pow(x, B) (x = Frequency, y = wind speed in m/s)
+  double Acoef = 1.1249364477950286674867526;
+  double Bcoef = 0.62892385639582774267667054;
+
   // Turn on supply to the wind speed sensor
   HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_SET);
   HAL_Delay(5);
@@ -972,8 +977,8 @@ float getWindSpeed()
   uint32_t _period = 0;
 
   // Wait for the edge of the signal (doesn't matter if is rising or falling)
-  while ((HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin) == _initState) && ((HAL_GetTick() - _timeout) < 1000));
-  if ((HAL_GetTick() - _timeout) >= 1000) return 0;
+  while ((HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin) == _initState) && ((HAL_GetTick() - _timeout) < 1500));
+  if ((HAL_GetTick() - _timeout) >= 1500) return 0;
 
   // Reset the timer counter and measure the time until next edge of the signal
   htim6.Instance->CNT = 0;
@@ -982,7 +987,7 @@ float getWindSpeed()
 
   // Reset the timer counter and measure the time until next edge of the signal
   htim6.Instance->CNT = 0;
-  while ((HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin) == _initState)&& (htim6.Instance->CNT < 65530));
+  while ((HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin) == _initState) && (htim6.Instance->CNT < 65530));
   _period += (htim6.Instance->CNT);
 
   // Stop the timer
@@ -992,7 +997,10 @@ float getWindSpeed()
   HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_RESET);
 
   // Calculate the frequency in hertz and return the result
-  return ((float)(1 / (_period * 1E-6 * 15.25))) / 9.14;
+  double freqHz = ((double)(1 / (_period * 1E-6 * 15.25))) / 2;
+
+  // Calculate and return wind speed in m/s
+  return (Acoef * pow(freqHz, Bcoef));
 }
 
 int16_t getWindDir(uint32_t _pin, int16_t _offset)
