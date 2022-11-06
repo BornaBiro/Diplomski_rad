@@ -243,7 +243,7 @@ int main(void)
   }
   else
   {
-    sendInterval = 600;
+    sendInterval = 300;
     RTC_SetAlarmEpoch(RTC_GetTime() + sendInterval, RTC_ALARMMASK_DATEWEEKDAY);
     glassLCD_WriteData("NO SYNC");
     glassLCD_Update();
@@ -277,6 +277,7 @@ int main(void)
     {
       int16_t t = round(currentWeatherData.tempSHT * 10);
       int16_t h = round(currentWeatherData.humidity * ((currentWeatherData.humidity >= 100) ? 1 : 10));
+      lcdDot = (h >= 1000) ? 0b00100000 : 0b00100010;
       sprintf(lcdTemp, "%3d%01d %2d%01d", t / 10, abs(t % 10), abs(h / 10), abs(h % 10));
       lcdDot = (currentWeatherData.humidity >= 100) ? 0b00100000 : 0b00100010;
       lcdArrow = 0b10000000;
@@ -957,10 +958,10 @@ uint32_t getADC(uint32_t _ch)
 
 float getWindSpeed()
 {
-  // Coefficients for power regression (https://keisan.casio.com/exec/system/14059931777261)
-  // Calculation for frequency to wind speed  y = A * pow(x, B) (x = Frequency, y = wind speed in m/s)
-  double Acoef = 1.1249364477950286674867526;
-  double Bcoef = 0.62892385639582774267667054;
+  // Coefficients for linear regression ((https://keisan.casio.com/exec/system/14059929550941))
+  // Calculation for frequency to wind speed  y = A + (B * x) (x = Frequency, y = wind speed in m/s)
+  double Acoef = 0;
+  double Bcoef = 0.31413320680643629774139228;
 
   // Turn on supply to the wind speed sensor
   HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_SET);
@@ -977,8 +978,8 @@ float getWindSpeed()
   uint32_t _period = 0;
 
   // Wait for the edge of the signal (doesn't matter if is rising or falling)
-  while ((HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin) == _initState) && ((HAL_GetTick() - _timeout) < 1500));
-  if ((HAL_GetTick() - _timeout) >= 1500) return 0;
+  while ((HAL_GPIO_ReadPin(WS_DIN_GPIO_Port, WS_DIN_Pin) == _initState) && ((HAL_GetTick() - _timeout) < 1000));
+  if ((HAL_GetTick() - _timeout) >= 1000) return 0;
 
   // Reset the timer counter and measure the time until next edge of the signal
   htim6.Instance->CNT = 0;
@@ -996,11 +997,11 @@ float getWindSpeed()
   // Turn on supply to the wind speed sensor
   HAL_GPIO_WritePin(EN_3V3SW_GPIO_Port, EN_3V3SW_Pin, GPIO_PIN_RESET);
 
-  // Calculate the frequency in hertz and return the result
-  double freqHz = ((double)(1 / (_period * 1E-6 * 15.25))) / 2;
+  // Calculate the frequency in hertz and return the result. 0.988533017 is  calibration value (tested with function generator)
+  double freqHz = ((double)(1 / (_period * 1E-6 * 15))) * 0.988533017;
 
   // Calculate and return wind speed in m/s
-  return (Acoef * pow(freqHz, Bcoef));
+  return (Acoef + (freqHz * Bcoef));
 }
 
 int16_t getWindDir(uint32_t _pin, int16_t _offset)
